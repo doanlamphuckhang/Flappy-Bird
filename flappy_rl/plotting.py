@@ -21,7 +21,7 @@ def plot_training(history, out_path="training_results.png", window=20, show=True
     _curve(ax_reward, history.rewards, "Episode reward", "tab:blue", window)
     _curve(ax_score, history.scores, "Episode score", "tab:green", window)
     if history.evals:
-        episodes, scores = zip(*history.evals)
+        episodes, scores = zip(*history.evals, strict=True)
         ax_score.plot(episodes, scores, "o-", color="tab:orange", label="Greedy eval (mean)")
     for ax, title, ylabel in ((ax_reward, "Reward per episode", "Reward"),
                               (ax_score, "Score per episode", "Score")):

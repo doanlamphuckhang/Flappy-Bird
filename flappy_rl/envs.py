@@ -13,10 +13,16 @@ ENV_ID = "FlappyBird-v0"
 
 
 def shape_reward(reward, terminated):
-    """Death -1, pipe passed +1, alive +0.1 (dense signal that favours survival)."""
+    """Map the game reward to: death -1, pipe passed +1, above the screen -0.5, alive +0.1.
+
+    The base game gives +1 per pipe, -0.5 while the bird is above the top edge and +0.1
+    otherwise; only termination is relabelled (to -1) so the ceiling penalty is kept.
+    """
     if terminated:
         return -1.0
-    return 1.0 if reward > 0.5 else 0.1
+    if reward > 0.5:
+        return 1.0
+    return -0.5 if reward < 0 else 0.1
 
 
 def _make_base(render_mode):
@@ -29,6 +35,9 @@ class FlappyBirdStateEnv(gym.Wrapper):
 
     def __init__(self, render=False):
         super().__init__(_make_base("rgb_array" if render else None))
+        space = self.env.observation_space
+        self.observation_space = gym.spaces.Box(
+            space.low.astype(np.float32), space.high.astype(np.float32), dtype=np.float32)
 
     def get_frame(self):
         return self.env.render()

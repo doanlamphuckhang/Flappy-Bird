@@ -2,4 +2,4 @@
 from .agent import DQNAgent
 from .config import AgentConfig, TrainConfig
 
-__all__ = ["DQNAgent", "AgentConfig", "TrainConfig"]
+__all__ = ["AgentConfig", "DQNAgent", "TrainConfig"]

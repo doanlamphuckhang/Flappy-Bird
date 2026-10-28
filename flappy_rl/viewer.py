@@ -7,8 +7,12 @@ VIEWER_TEMPLATE = Path(__file__).resolve().parent / "assets" / "flappy_3d.html"
 DATA_PLACEHOLDER = "/*__FLAPPY_DATA__*/"
 
 
+# Escaping these keeps embedded JSON from closing the <script> or opening an HTML comment.
+_JS_ESCAPES = str.maketrans({"<": "\\u003c", ">": "\\u003e", "&": "\\u0026"})
+
+
 def _as_js(obj):
-    return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")  # keep </script> out
+    return json.dumps(obj, separators=(",", ":")).translate(_JS_ESCAPES)
 
 
 def build_3d_viewer(replay=None, weights=None, template=VIEWER_TEMPLATE, out_path="flappy_3d_embedded.html"):

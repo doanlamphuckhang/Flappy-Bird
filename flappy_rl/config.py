@@ -3,6 +3,8 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+NUM_ACTIONS = 2  # 0 = do nothing, 1 = flap
+
 # Observation layout per mode: (shape, replay dtype).
 OBSERVATIONS = {
     "pixel": ((4, 84, 84), np.uint8),
@@ -46,8 +48,14 @@ class AgentConfig:
             _positive_int(name, getattr(self, name))
         if not (0 <= self.gamma <= 1 and 0 <= self.tau <= 1):
             raise ValueError("gamma and tau must be in [0, 1]")
+        if self.soft_update and self.tau == 0:
+            raise ValueError("tau must be positive with soft_update, or the target never moves")
         if not (np.isfinite(self.lr) and self.lr > 0):
             raise ValueError("lr must be finite and positive")
+        if not (np.isfinite(self.max_grad_norm) and self.max_grad_norm > 0):
+            raise ValueError("max_grad_norm must be finite and positive")
+        if not self.weight_decay >= 0:
+            raise ValueError("weight_decay must be non-negative")
         if not 0 <= self.epsilon_min <= self.epsilon_start <= 1:
             raise ValueError("require 0 <= epsilon_min <= epsilon_start <= 1")
 

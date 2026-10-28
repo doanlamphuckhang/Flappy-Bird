@@ -1,6 +1,6 @@
 [project]
 name = "flappy-rl"
-version = "1.0.0"
+version = "1.0.1"
 description = "Double Dueling DQN for Flappy Bird (pixel and state observations)"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "ruff"]
 
 [build-system]
 requires = ["setuptools>=64"]
@@ -30,3 +30,10 @@ flappy_rl = ["assets/*.html"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [".", "tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "RUF"]

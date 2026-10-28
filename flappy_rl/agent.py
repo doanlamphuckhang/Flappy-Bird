@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn, optim
 
-from .config import AgentConfig
+from .config import NUM_ACTIONS, AgentConfig
 from .models import build_network
 from .replay import ReplayBuffer
 from .runtime import resolve_device
@@ -57,7 +57,7 @@ class DQNAgent:
     def select_action(self, state, evaluate=False):
         """Epsilon-greedy action; `evaluate=True` is purely greedy."""
         if not evaluate and random.random() < self.epsilon:
-            return random.randrange(2)
+            return random.randrange(NUM_ACTIONS)
         return int(self.q_values(state).argmax())
 
     def _td_target(self, rewards, next_states, dones):
@@ -95,7 +95,8 @@ class DQNAgent:
         cfg = self.config
         if cfg.soft_update:
             with torch.no_grad():
-                for target, policy in zip(self.target_net.parameters(), self.policy_net.parameters()):
+                for target, policy in zip(self.target_net.parameters(), self.policy_net.parameters(),
+                                          strict=True):
                     target.lerp_(policy, cfg.tau)
         elif self.total_steps % cfg.target_update_freq == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())

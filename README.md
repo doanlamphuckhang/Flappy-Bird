@@ -3,6 +3,8 @@
 Agent học chơi Flappy Bird từ ảnh (`pixel`, CNN) hoặc vector trạng thái (`state`, MLP).
 Kỹ thuật: Double DQN, Dueling, Huber loss, soft target update, AMP, replay buffer đều.
 
+Phần thưởng sau shaping: chết -1, qua ống +1, bay vượt mép trên màn hình -0,5, còn sống +0,1.
+
 ## Cấu trúc
 
 ```
@@ -26,11 +28,15 @@ scripts/package_source.py        đóng gói dist/flappy_bird.zip
 
 ```bash
 pip install -e .[dev]
+ruff check .
 python -m pytest
 ```
 
+CI (GitHub Actions) chạy `ruff` và `pytest` trên CPU cho mỗi lần push/PR.
+
 Mở `notebooks/flappy_bird_rl.ipynb`, chọn `MODE` rồi chạy từng cell.
-Train tiếp từ checkpoint: đặt `RESUME` (cấu hình đọc từ checkpoint).
+Train tiếp từ checkpoint: đặt `RESUME` (cấu hình và chế độ đọc từ checkpoint).
+Kết quả mỗi lần chạy nằm trong `runs/<mode>_<thời gian>/`; vẽ lại đồ thị bằng `History.load`.
 
 Trình xem 3D đọc replay của cả hai chế độ; chạy mạng trực tiếp trong trình duyệt
 chỉ hỗ trợ MLP (`state`).

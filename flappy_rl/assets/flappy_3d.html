@@ -1684,8 +1684,8 @@ window.addEventListener('error', function (e) {
   if (window.__flappyReady) return;
   var el = document.getElementById('err');
   el.style.display = 'flex';
-  el.innerHTML = '<div><b>Không khởi động được giao diện 3D.</b><br>Trang cần Internet để tải Three.js từ cdn.jsdelivr.net.<br><small>' +
-    String(e.message || (e.target && e.target.src) || '') + '</small></div>';
+  el.innerHTML = '<div><b>Không khởi động được giao diện 3D.</b><br>Trang cần Internet để tải Three.js từ cdn.jsdelivr.net.<br><small></small></div>';
+  el.querySelector('small').textContent = String(e.message || (e.target && e.target.src) || '');
 }, true);
 </script>
 </body>

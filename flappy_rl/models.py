@@ -1,6 +1,8 @@
 """Dueling Q-networks (Wang et al., 2016): Q(s,a) = V(s) + A(s,a) - mean_a A(s,a)."""
 from torch import nn
 
+from .config import NUM_ACTIONS
+
 
 class DuelingNet(nn.Module):
     """Shared dueling head. Subclasses define `features` and the feature width."""
@@ -22,7 +24,7 @@ class DuelingNet(nn.Module):
 class DuelingDQNCNN(DuelingNet):
     """Nature-DQN convolutional trunk for stacked 84x84 frames (uint8 in, scaled to [0, 1])."""
 
-    def __init__(self, in_channels=4, num_actions=2):
+    def __init__(self, in_channels=4, num_actions=NUM_ACTIONS):
         trunk = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=8, stride=4), nn.ReLU(inplace=True),
             nn.Conv2d(32, 64, kernel_size=4, stride=2), nn.ReLU(inplace=True),
@@ -37,7 +39,7 @@ class DuelingDQNCNN(DuelingNet):
 class DuelingDQNMLP(DuelingNet):
     """MLP trunk for the 12-dimensional state vector."""
 
-    def __init__(self, in_features=12, num_actions=2):
+    def __init__(self, in_features=12, num_actions=NUM_ACTIONS):
         trunk = nn.Sequential(
             nn.Linear(in_features, 256), nn.ReLU(inplace=True),
             nn.Linear(256, 256), nn.ReLU(inplace=True),
@@ -45,7 +47,7 @@ class DuelingDQNMLP(DuelingNet):
         super().__init__(trunk, feature_dim=256, hidden=128, num_actions=num_actions)
 
 
-def build_network(mode, num_actions=2):
+def build_network(mode, num_actions=NUM_ACTIONS):
     if mode == "pixel":
         return DuelingDQNCNN(num_actions=num_actions)
     if mode == "state":

@@ -3,8 +3,6 @@ import base64
 import json
 import os
 
-import numpy as np
-
 from .envs import make_env
 
 REPLAY_FORMAT = "flappy-replay-v1"
@@ -14,11 +12,11 @@ WEIGHTS_FORMAT = "flappy-dueling-mlp-v1"
 def _snapshot(env, rec, pipe_gap):
     """Append the current game state (288x512 coordinates) to a recording."""
     game = env.unwrapped
-    rec["pipes"].append([v for up, low in zip(game._upper_pipes, game._lower_pipes)
+    rec["pipes"].append([v for up, low in zip(game._upper_pipes, game._lower_pipes, strict=True)
                          for v in (round(float(up["x"]), 2), round(float(low["y"]) - pipe_gap, 2))])
     rec["y"].append(round(float(game._player_y), 2))
-    rec["vel"].append(float(game._player_vel_y))
-    rec["rot"].append(float(game._player_rot))
+    rec["vel"].append(round(float(game._player_vel_y), 2))
+    rec["rot"].append(round(float(game._player_rot), 2))
     rec["score_t"].append(int(game._score))
 
 
@@ -51,7 +49,7 @@ def record_replay(agent, num_episodes=3, max_steps=3000, out_path="flappy_replay
         env.close()
     replay = {"format": REPLAY_FORMAT, "mode": agent.config.mode, "pipe_gap": pipe_gap,
               "episodes": episodes}
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(replay, f, separators=(",", ":"))
     print(f"Replay: {out_path} ({os.path.getsize(out_path) / 1024:.0f} KB), "
           f"scores {[e['score'] for e in episodes]}")
@@ -69,7 +67,7 @@ def export_mlp_weights(agent, out_path="flappy_mlp_weights.json"):
         for name, t in agent.policy_net.state_dict().items()
     }
     weights = {"format": WEIGHTS_FORMAT, "tensors": tensors}
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(weights, f)
     print(f"Weights: {out_path} ({os.path.getsize(out_path) / 1024:.0f} KB)")
     return weights

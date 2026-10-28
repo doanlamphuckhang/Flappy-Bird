@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 dist/
 outputs/
+*.tmp
+.ipynb_checkpoints/
+.ruff_cache/
+runs/

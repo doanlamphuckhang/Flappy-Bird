@@ -4,7 +4,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 INCLUDE = ["flappy_rl", "notebooks", "tests", "scripts", "pyproject.toml", "README.md"]
-SKIP = {"__pycache__", ".pytest_cache"}
+SKIP = {"__pycache__", ".pytest_cache", ".ipynb_checkpoints", ".ruff_cache"}
 
 
 def main():

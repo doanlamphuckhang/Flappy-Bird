@@ -9,7 +9,7 @@ from flappy_rl.agent import linear_schedule
 from flappy_rl.evaluation import evaluate_policy
 from flappy_rl.models import DuelingDQNCNN, DuelingDQNMLP
 from flappy_rl.replay import ReplayBuffer
-from flappy_rl.training import train
+from flappy_rl.training import History, train
 
 
 def test_replay_wraparound_and_validation():
@@ -26,7 +26,8 @@ def test_replay_wraparound_and_validation():
 
 
 @pytest.mark.parametrize("bad", [{"exploration_steps": 0}, {"tau": 2}, {"batch_size": 0},
-                                 {"lr": float("nan")}, {"epsilon_min": 2.0}])
+                                 {"lr": float("nan")}, {"epsilon_min": 2.0}, {"tau": 0.0},
+                                 {"max_grad_norm": 0.0}, {"weight_decay": -1e-3}])
 def test_invalid_agent_config(bad):
     with pytest.raises(ValueError):
         AgentConfig.for_mode("state", **bad)
@@ -71,7 +72,7 @@ def test_update_changes_weights_and_checkpoint_roundtrip(make_agent, tmp_path):
         agent.observe(np.zeros(12, np.float32), i, 1., np.ones(12, np.float32), False)
     before = [p.detach().clone() for p in agent.policy_net.parameters()]
     assert np.isfinite(agent.update())
-    assert any(not torch.equal(a, b) for a, b in zip(before, agent.policy_net.parameters()))
+    assert any(not torch.equal(a, b) for a, b in zip(before, agent.policy_net.parameters(), strict=True))
 
     path = tmp_path / "ckpt.pt"
     agent.save(path)
@@ -80,7 +81,7 @@ def test_update_changes_weights_and_checkpoint_roundtrip(make_agent, tmp_path):
     resumed = DQNAgent.from_checkpoint(path, training=True)
     assert (resumed.env_steps, resumed.total_steps) == (2, 1)
     assert resumed.config == agent.config
-    for a, b in zip(agent.target_net.parameters(), resumed.target_net.parameters()):
+    for a, b in zip(agent.target_net.parameters(), resumed.target_net.parameters(), strict=True):
         assert torch.equal(a, b)
 
     inference = DQNAgent.from_checkpoint(path)
@@ -125,3 +126,18 @@ def test_greedy_evaluation_is_repeatable_and_leaves_epsilon(make_agent):
     assert first == evaluate_policy(agent, env, 2, 2, seed=100)
     assert env.seeds == [100, 101, 100, 101]
     assert agent.env_steps == 0 and agent.epsilon == 1.0
+
+
+def test_hard_target_update_allows_zero_tau(make_agent):
+    agent = make_agent(soft_update=False, tau=0.0, target_update_freq=1)
+    for i in range(2):
+        agent.observe(np.zeros(12, np.float32), i, 1., np.ones(12, np.float32), False)
+    agent.update()
+    for a, b in zip(agent.policy_net.parameters(), agent.target_net.parameters(), strict=True):
+        assert torch.equal(a, b)
+
+
+def test_history_save_load_roundtrip(tmp_path):
+    history = History([1.5, -1.0], [3, 0], [(50, 2.5)])
+    history.save(tmp_path / "h.json")
+    assert History.load(tmp_path / "h.json") == history

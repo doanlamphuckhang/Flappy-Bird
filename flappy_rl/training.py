@@ -2,11 +2,12 @@
 import json
 import random
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
 
+from .config import NUM_ACTIONS
 from .evaluation import evaluate_policy
 
 
@@ -17,14 +18,19 @@ class History:
     evals: list = field(default_factory=list)  # (episode, mean greedy score)
 
     def save(self, path):
-        Path(path).write_text(json.dumps(self.__dict__))
+        Path(path).write_text(json.dumps(asdict(self)), encoding="utf-8")
+
+    @classmethod
+    def load(cls, path):
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(data["rewards"], data["scores"], [tuple(e) for e in data["evals"]])
 
 
 def _warmup(agent, env, steps, seed):
     """Fill the replay buffer with random-policy transitions."""
     state, _ = env.reset(seed=seed)
     for _ in range(steps):
-        action = random.randrange(2)
+        action = random.randrange(NUM_ACTIONS)
         next_state, reward, terminated, truncated, _ = env.step(action)
         # Bootstrap through truncation; only true termination zeroes the future value.
         agent.memory.push(state, action, reward, next_state, terminated)
