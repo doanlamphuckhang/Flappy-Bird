@@ -1,0 +1,7 @@
+__pycache__/
+*.pt
+*.mp4
+*.egg-info/
+.pytest_cache/
+dist/
+outputs/

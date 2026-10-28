@@ -1,0 +1,32 @@
+[project]
+name = "flappy-rl"
+version = "1.0.0"
+description = "Double Dueling DQN for Flappy Bird (pixel and state observations)"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "numpy",
+    "gymnasium",
+    "flappy-bird-gymnasium==0.4.0",
+    "opencv-python-headless",
+    "matplotlib",
+    "imageio",
+    "imageio-ffmpeg",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["flappy_rl*"]
+
+[tool.setuptools.package-data]
+flappy_rl = ["assets/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]

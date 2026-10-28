@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flappy Bird 3D — Double Dueling DQN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --glass: rgba(14,22,40,.46); --glass-brd: rgba(255,255,255,.16); --txt:#f4f7ff; --dim:rgba(232,238,255,.66);
+  --accent:#ffd23f; --flap:#ff8a3d; --idle:#5cc8ff; --good:#6ee7a0; --bad:#ff6b7a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0b1020;color:var(--txt);
+  font-family:"Be Vietnam Pro",system-ui,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;user-select:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;outline:none}
+#hud{position:fixed;inset:0;pointer-events:none;transition:opacity .35s}
+#hud.hidden{opacity:0}
+.card{position:absolute;background:var(--glass);border:1px solid var(--glass-brd);border-radius:16px;
+  backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+  box-shadow:0 10px 34px rgba(4,8,20,.28), inset 0 1px 0 rgba(255,255,255,.12);pointer-events:auto}
+.lbl{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
+
+/* tieu de */
+#info{top:16px;left:16px;padding:12px 14px 12px;min-width:232px}
+#info h1{margin:0;font:800 19px/1.1 "Baloo 2","Be Vietnam Pro",sans-serif;letter-spacing:.01em}
+#info h1 span{color:var(--accent)}
+#info .sub{font-size:11.5px;color:var(--dim);margin-top:2px}
+#badge{display:inline-flex;align-items:center;gap:6px;margin-top:9px;padding:4px 10px 4px 8px;border-radius:99px;
+  font-size:11.5px;font-weight:700;letter-spacing:.06em;background:rgba(255,210,63,.16);color:var(--accent);border:1px solid rgba(255,210,63,.4)}
+#badge i{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.35}}
+#stats{display:grid;grid-template-columns:repeat(4,auto);gap:4px 16px;margin-top:10px}
+#stats b{display:block;font:700 15px "Baloo 2",sans-serif;font-variant-numeric:tabular-nums}
+
+/* diem */
+#scorebox{position:absolute;top:10px;left:50%;transform:translateX(-50%);text-align:center}
+#score{font:800 84px/1 "Baloo 2",sans-serif;color:#fff;font-variant-numeric:tabular-nums;
+  text-shadow:0 4px 0 rgba(0,0,0,.22),0 0 28px rgba(255,255,255,.35);-webkit-text-stroke:2px rgba(20,30,60,.55);paint-order:stroke fill}
+#score.pop{animation:pop .34s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.32)}100%{transform:scale(1)}}
+#best{display:inline-block;margin-top:2px;padding:3px 12px;border-radius:99px;background:var(--glass);border:1px solid var(--glass-brd);
+  font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--dim)}
+#best b{color:var(--accent);font-size:13px}
+
+/* bo nao */
+#brain{top:16px;right:16px;width:266px;padding:12px 14px}
+#brain .row{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:12px}
+#brain .row .nm{width:88px;color:var(--dim);font-weight:600;white-space:nowrap}
+#brain .row .val{width:46px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.bar{flex:1;height:10px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden}
+.bar i{display:block;height:100%;width:0;border-radius:99px;transition:width .08s linear}
+#q0 i{background:linear-gradient(90deg,#2f9fe0,var(--idle))} #q1 i{background:linear-gradient(90deg,#ff5e3a,var(--flap))}
+#brain .row.win .nm{color:#fff} #brain .row.win .val{color:var(--accent)}
+#qchart{width:100%;height:64px;margin-top:9px;border-radius:9px;background:rgba(0,0,0,.2);display:block}
+#obs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:9px}
+#obs div{background:rgba(255,255,255,.07);border-radius:9px;padding:5px 7px}
+#obs b{display:block;font:700 14px "Baloo 2",sans-serif;font-variant-numeric:tabular-nums}
+#act{margin-top:9px;display:flex;gap:6px}
+#act span{flex:1;text-align:center;padding:5px 0;border-radius:9px;font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  background:rgba(255,255,255,.07);color:var(--dim);transition:all .08s}
+#act span.on[data-a="0"]{background:var(--idle);color:#06243a} #act span.on[data-a="1"]{background:var(--flap);color:#3a1200;box-shadow:0 0 16px rgba(255,138,61,.7)}
+#brain .hint{font-size:11px;color:var(--dim);margin-top:8px;line-height:1.45}
+
+/* ban do 2D */
+#mini{left:16px;bottom:calc(var(--barh,60px) + 30px);padding:9px}
+#mini canvas{display:block;width:108px;height:192px;border-radius:8px;image-rendering:pixelated}
+#mini .lbl{margin-bottom:6px;font-size:9.5px}
+
+/* thanh dieu khien */
+#bar{left:0;right:0;margin:0 auto;width:fit-content;bottom:16px;display:flex;align-items:center;gap:8px;padding:8px 10px;max-width:calc(100vw - 24px);flex-wrap:wrap;justify-content:center}
+.seg{display:flex;background:rgba(255,255,255,.08);border-radius:11px;padding:3px}
+button,select{font:600 12.5px "Be Vietnam Pro",system-ui,sans-serif;color:var(--txt);cursor:pointer}
+.seg button,.btn{border:0;background:transparent;padding:7px 9px;border-radius:9px;transition:background .15s,color .15s;white-space:nowrap}
+.seg button:hover,.btn:hover{background:rgba(255,255,255,.14)}
+.seg button.on{background:var(--accent);color:#33260a}
+.seg button.nodata{opacity:.55}
+.btn{background:rgba(255,255,255,.08);min-width:36px}
+.btn.on{background:rgba(110,231,160,.26);color:var(--good)}
+select{background:rgba(255,255,255,.08);border:0;border-radius:9px;padding:7px 4px;outline:none;max-width:132px}
+select option{background:#16203a;color:#fff}
+.sep{width:1px;height:22px;background:rgba(255,255,255,.16)}
+#speedwrap{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700}
+#speed{width:84px;accent-color:var(--accent)}
+#speedlbl{width:38px;font-variant-numeric:tabular-nums}
+
+/* timeline replay */
+#timeline{left:0;right:0;margin:0 auto;bottom:calc(var(--barh,60px) + 26px);padding:8px 12px;display:none;align-items:center;gap:10px;width:min(680px,calc(100vw - 300px))}
+#timeline.show{display:flex}
+#scrub{flex:1;accent-color:var(--accent)}
+#eps{display:flex;gap:4px}
+#eps button{border:0;border-radius:8px;padding:4px 9px;background:rgba(255,255,255,.1);font-size:11.5px}
+#eps button.on{background:var(--accent);color:#33260a}
+#tl-lbl{font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--dim);min-width:86px;text-align:right}
+
+/* thong bao */
+#msg{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;opacity:0;transition:opacity .3s;pointer-events:none}
+#msg.show{opacity:1}
+#msg h2{margin:0;font:800 54px/1 "Baloo 2",sans-serif;text-shadow:0 4px 0 rgba(0,0,0,.25),0 0 30px rgba(255,255,255,.4);-webkit-text-stroke:2px rgba(20,30,60,.5);paint-order:stroke fill}
+#msg p{margin:8px 0 0;font-size:15px;font-weight:600;text-shadow:0 2px 8px rgba(0,0,0,.5)}
+kbd{display:inline-block;padding:2px 8px;border-radius:7px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.34);font:700 12px "Be Vietnam Pro",sans-serif}
+#toast{position:absolute;left:0;right:0;margin:0 auto;width:fit-content;top:132px;transform:translateY(-8px);padding:9px 16px;border-radius:12px;background:rgba(10,16,32,.78);
+  border:1px solid var(--glass-brd);font-size:13px;font-weight:600;opacity:0;transition:all .3s;max-width:min(620px,80vw);text-align:center}
+#toast.show{opacity:1;transform:none}
+.plus{position:absolute;font:800 30px "Baloo 2",sans-serif;color:var(--accent);text-shadow:0 2px 0 rgba(0,0,0,.3),0 0 16px rgba(255,210,63,.9);
+  animation:rise .9s ease-out forwards;pointer-events:none}
+@keyframes rise{0%{transform:translate(-50%,-50%) scale(.5);opacity:0}20%{transform:translate(-50%,-90%) scale(1.25);opacity:1}100%{transform:translate(-50%,-240%) scale(1);opacity:0}}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none}
+#help{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(6,10,24,.55);backdrop-filter:blur(6px);pointer-events:auto}
+#help.show{display:flex}
+#help .card{position:relative;padding:22px 26px;max-width:560px;width:calc(100vw - 32px);max-height:calc(100vh - 32px);overflow:auto}
+#help h3{margin:0 0 10px;font:800 22px "Baloo 2",sans-serif}
+#help table{border-collapse:collapse;font-size:13px;width:100%}
+#help td{padding:4px 8px 4px 0;vertical-align:top} #help td:first-child{white-space:nowrap;width:1%}
+#help p{font-size:12.5px;color:var(--dim);line-height:1.55;margin:12px 0 0}
+#drop{position:fixed;inset:14px;border:3px dashed var(--accent);border-radius:22px;background:rgba(255,210,63,.12);display:none;align-items:center;justify-content:center;
+  font:800 30px "Baloo 2",sans-serif;pointer-events:none}
+#drop.show{display:flex}
+#err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:15px;line-height:1.6;background:#0b1020}
+@media (max-width:900px){#brain{width:214px}#mini{display:none}#score{font-size:60px}#timeline{width:calc(100vw - 24px)}}
+@media (max-width:640px){#brain,#info .sub,#stats{display:none}#info{min-width:0}}
+</style>
+<script>/*__FLAPPY_DATA__*/</script>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<canvas id="gl" tabindex="0"></canvas>
+
+<div id="hud">
+  <div id="info" class="card">
+    <h1>Flappy Bird <span>3D</span></h1>
+    <div class="sub">Double Dueling DQN · mô phỏng 30 bước/giây</div>
+    <div id="badge"><i></i><span id="badge-txt">TỰ LÁI</span></div>
+    <div id="stats">
+      <div><span class="lbl">Tập</span><b id="st-ep">1</b></div>
+      <div><span class="lbl">Bước</span><b id="st-step">0</b></div>
+      <div><span class="lbl">FPS</span><b id="st-fps">60</b></div>
+      <div title="Thời gian GPU cho 1 khung hình"><span class="lbl">GPU ms</span><b id="st-gpu">–</b></div>
+    </div>
+  </div>
+
+  <div id="scorebox">
+    <div id="score">0</div>
+    <div id="best">KỶ LỤC <b id="best-v">0</b></div>
+  </div>
+
+  <div id="brain" class="card">
+    <div class="lbl" id="brain-title">Bộ não agent</div>
+    <div id="qwrap">
+      <div class="row" id="row0"><span class="nm">Q(đứng yên)</span><div class="bar" id="q0"><i></i></div><span class="val" id="q0v">–</span></div>
+      <div class="row" id="row1"><span class="nm">Q(vỗ cánh)</span><div class="bar" id="q1"><i></i></div><span class="val" id="q1v">–</span></div>
+      <canvas id="qchart" width="476" height="128"></canvas>
+    </div>
+    <div id="act"><span data-a="0">ĐỨNG YÊN</span><span data-a="1">VỖ CÁNH</span></div>
+    <div id="obs">
+      <div><span class="lbl">Tới ống</span><b id="o-dx">0</b></div>
+      <div><span class="lbl">Lệch khe</span><b id="o-dy">0</b></div>
+      <div><span class="lbl">Vận tốc</span><b id="o-v">0</b></div>
+    </div>
+    <div class="hint" id="brain-hint"></div>
+  </div>
+
+  <div id="mini" class="card">
+    <div class="lbl">Game gốc 2D · hitbox</div>
+    <canvas id="minimap" width="144" height="256"></canvas>
+  </div>
+
+  <div id="timeline" class="card">
+    <div id="eps"></div>
+    <input id="scrub" type="range" min="0" max="100" value="0">
+    <span id="tl-lbl">0 / 0</span>
+  </div>
+
+  <div id="bar" class="card">
+    <div class="seg" id="modes">
+      <button data-mode="auto" title="Bộ điều khiển heuristic (phím 1)">Tự lái</button>
+      <button data-mode="human" title="Bạn tự chơi bằng Space / click (phím 2)">Tự chơi</button>
+      <button data-mode="agent" title="Chạy mạng DQN từ file weights (phím 3)">DQN trực tiếp</button>
+      <button data-mode="replay" title="Phát lại ván chơi ghi từ notebook (phím 4)">Replay</button>
+    </div>
+    <div class="sep"></div>
+    <button class="btn" id="btn-pause" title="Tạm dừng / tiếp tục (P)">Tạm dừng</button>
+    <button class="btn" id="btn-step" title="Tiến 1 bước (.)">Một bước</button>
+    <button class="btn" id="btn-restart" title="Chơi lại (R)">Chơi lại</button>
+    <div id="speedwrap" title="Tốc độ mô phỏng ([ và ])"><input id="speed" type="range" min="0" max="5" step="1" value="2"><span id="speedlbl">1×</span></div>
+    <div class="sep"></div>
+    <select id="sel-cam" title="Góc máy (C)">
+      <option value="cinematic">Điện ảnh</option><option value="classic">Cổ điển 2.5D</option>
+      <option value="chase">Bám đuôi</option><option value="pov">Góc nhìn chim</option><option value="orbit">Tự xoay</option>
+    </select>
+    <select id="sel-theme" title="Khung cảnh (T)">
+      <option value="day">Ban ngày</option><option value="sunset">Hoàng hôn</option><option value="night">Ban đêm</option>
+    </select>
+    <select id="sel-q" title="Chất lượng đồ hoạ (Tự động: tự hạ/tăng theo sức GPU)">
+      <option value="auto">Tự động</option><option value="high">Cao</option><option value="balanced">Cân bằng</option><option value="light">Nhẹ</option>
+    </select>
+    <button class="btn on" id="tg-cycle" title="Tự đổi cảnh sau mỗi 10 điểm">Đổi cảnh</button>
+    <button class="btn on" id="tg-vision" title="Hiện tia ngắm tới khe ống (V)">Tia ngắm</button>
+    <button class="btn" id="tg-sound" title="Âm thanh (M)">Âm thanh: tắt</button>
+    <div class="sep"></div>
+    <button class="btn" id="btn-load" title="Nạp flappy_replay.json hoặc flappy_mlp_weights.json (cũng có thể kéo-thả)">Nạp file</button>
+    <button class="btn" id="btn-full" title="Toàn màn hình (F)">Toàn màn hình</button>
+    <button class="btn" id="btn-help" title="Trợ giúp (?)">?</button>
+    <input id="file" type="file" accept=".json,application/json" multiple hidden>
+  </div>
+
+  <div id="msg"><h2 id="msg-h"></h2><p id="msg-p"></p></div>
+  <div id="toast"></div>
+</div>
+
+<div id="flash"></div>
+<div id="drop">Thả file .json vào đây</div>
+<div id="help"><div class="card">
+  <h3>Flappy Bird 3D — hướng dẫn</h3>
+  <table>
+    <tr><td><kbd>Space</kbd> / click</td><td>Vỗ cánh ở chế độ Tự chơi; ở các chế độ khác Space = tạm dừng</td></tr>
+    <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd></td><td>Tự lái · Tự chơi · DQN trực tiếp · Replay</td></tr>
+    <tr><td><kbd>P</kbd> <kbd>.</kbd> <kbd>R</kbd></td><td>Tạm dừng · tiến 1 bước · chơi lại</td></tr>
+    <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Giảm / tăng tốc độ mô phỏng (0.25× → 8×)</td></tr>
+    <tr><td><kbd>C</kbd> <kbd>T</kbd></td><td>Đổi góc máy · đổi khung cảnh</td></tr>
+    <tr><td><kbd>V</kbd> <kbd>B</kbd> <kbd>M</kbd></td><td>Tia ngắm · hiệu ứng bloom · âm thanh</td></tr>
+    <tr><td><kbd>H</kbd> <kbd>F</kbd></td><td>Ẩn/hiện giao diện · toàn màn hình</td></tr>
+  </table>
+  <p><b>Xem agent đã huấn luyện:</b> chạy cell “Giao diện 3D” ở cuối notebook để xuất <code>flappy_replay.json</code>
+  (chế độ pixel lẫn state) và <code>flappy_mlp_weights.json</code> (chỉ chế độ state), rồi kéo-thả file vào trang này.
+  Vật lý ở đây được port nguyên từ <code>flappy-bird-gymnasium</code> nên mạng MLP chạy trực tiếp cho kết quả giống môi trường gốc.</p>
+  <p style="text-align:right;margin-top:14px"><button class="btn" id="help-close">Đóng</button></p>
+</div></div>
+<div id="err"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+
+const $ = (id) => document.getElementById(id);
+
+// 1. LOI MO PHONG — port nguyen ven vat ly cua flappy-bird-gymnasium (FlappyBird-v0)
+const SCREEN_W = 288, SCREEN_H = 512;
+const GROUND_Y = SCREEN_H * 0.79;            // 404.48
+const PLAYER_X = Math.floor(SCREEN_W * 0.2); // 57
+const PLAYER_W = 34, PLAYER_H = 24;
+const PIPE_W = 52, PIPE_H = 320, PIPE_GAP = 100, PIPE_VEL = 4;
+const MAX_VEL = 10, FLAP_VEL = -9, ROT_VEL = 3, ROT_THR = 20;
+const SPAWN_X = SCREEN_W + PIPE_W + SCREEN_W * 0.2; // 397.6
+const GAP_YS = [20, 30, 40, 50, 60, 70, 80, 90];
+const GAP_BASE = Math.floor(GROUND_Y * 0.2); // 80
+const SIM_FPS = 30;
+const LOOKAHEAD = 720; // so buoc sinh ong truoc, de ong hien dan tu xa thay vi bat ngo xuat hien
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Day ong: vi ong luon troi -4px/buoc bat ke hanh dong, toan bo "duong ong" duoc xac dinh boi RNG.
+// Moi ong co toa do tuyet doi abs = x + 4*buoc (khong doi), nen renderer ve duoc ca ong sap vao va da ra khoi man hinh goc.
+class PipeTrack {
+  constructor(rng) {
+    this.rng = rng; this.inst = []; this.slots = []; this.simT = 0; this.nextId = 0;
+    for (let i = 0; i < 3; i++) this.slots.push(this._make(SCREEN_W + i * (SCREEN_W / 2), 0));
+  }
+  _make(abs, spawn) {
+    const top = GAP_YS[Math.floor(this.rng() * GAP_YS.length)] + GAP_BASE;
+    const p = { id: this.nextId++, abs, top, bot: top + PIPE_GAP, spawn, end: Infinity, scoredAt: -1 };
+    this.inst.push(p); return p;
+  }
+  ensure(t) {
+    while (this.simT < t) {
+      this.simT++;
+      for (let i = 0; i < 3; i++) {
+        const p = this.slots[i];
+        if (p.abs - PIPE_VEL * this.simT < -PIPE_W) {
+          p.end = this.simT;
+          this.slots[i] = this._make(SPAWN_X + PIPE_VEL * this.simT, this.simT);
+        }
+      }
+    }
+    // bo bot ong da troi rat xa
+    while (this.inst.length > 70) this.inst.shift();
+  }
+  active(n) { return this.inst.filter((p) => p.spawn <= n && n < p.end); }
+}
+
+class FlappySim {
+  constructor(seed) { this.reset(seed); }
+  reset(seed) {
+    this.rng = mulberry32(seed ?? (Math.random() * 2 ** 31) | 0);
+    this.track = new PipeTrack(this.rng);
+    this.n = 0;
+    this.y = Math.floor((SCREEN_H - PLAYER_H) / 2); // 244
+    this.vel = -9; this.rot = 45; this.score = 0; this.dead = false;
+    this.track.ensure(LOOKAHEAD);
+  }
+  get pipes() { return this.track.inst; }
+  activePipes() { return this.track.active(this.n); }
+  // Tra ve {flapped, scored:[pipe], crashed}
+  step(action) {
+    const ev = { flapped: false, scored: [], crashed: false };
+    if (this.dead) return ev;
+    let flapped = false;
+    if (action === 1 && this.y > -2 * PLAYER_H) { this.vel = FLAP_VEL; flapped = true; ev.flapped = true; }
+    const mid = PLAYER_X + PLAYER_W / 2;
+    for (const p of this.track.active(this.n)) {
+      const pm = p.abs - PIPE_VEL * this.n + PIPE_W / 2;
+      if (pm <= mid && mid < pm + 4) { this.score++; p.scoredAt = this.n; ev.scored.push(p); }
+    }
+    if (this.rot > -90) this.rot -= ROT_VEL;
+    if (this.vel < MAX_VEL && !flapped) this.vel += 1;
+    if (flapped) this.rot = 45;
+    this.y += Math.min(this.vel, GROUND_Y - this.y - PLAYER_H);
+    this.n++;
+    this.track.ensure(this.n + LOOKAHEAD);
+    if (this._crash()) { this.dead = true; this.vel = 0; ev.crashed = true; }
+    return ev;
+  }
+  _crash() {
+    if (this.y + PLAYER_H >= GROUND_Y - 1) return true;
+    const px = PLAYER_X, py = Math.trunc(this.y);
+    for (const p of this.track.active(this.n)) {
+      const x = Math.trunc(p.abs - PIPE_VEL * this.n);
+      if (px < x + PIPE_W && px + PLAYER_W > x) {
+        if (py < p.top && py + PLAYER_H > p.top - PIPE_H) return true; // ong tren
+        if (py < p.bot + PIPE_H && py + PLAYER_H > p.bot) return true; // ong duoi
+      }
+    }
+    return false;
+  }
+  // Vector quan sat 12 chieu, giong _get_observation_features (normalize_obs=True)
+  observe() {
+    const ps = this.track.active(this.n).map((p) => {
+      const x = p.abs - PIPE_VEL * this.n;
+      return x > SCREEN_W ? [SCREEN_W, 0, SCREEN_H] : [x, p.top, p.bot];
+    }).sort((a, b) => a[0] - b[0]);
+    const o = new Float32Array(12);
+    for (let i = 0; i < 3; i++) { o[i * 3] = ps[i][0] / SCREEN_W; o[i * 3 + 1] = ps[i][1] / SCREEN_H; o[i * 3 + 2] = ps[i][2] / SCREEN_H; }
+    o[9] = this.y / SCREEN_H; o[10] = this.vel / MAX_VEL; o[11] = this.rot / 90;
+    return o;
+  }
+}
+
+// Ong ke tiep ma chim chua bay qua het (dung cho tu lai, tia ngam, HUD)
+function nextPipe(pipes, n) {
+  let best = null, bx = Infinity;
+  for (const p of pipes) {
+    const x = p.abs - PIPE_VEL * n;
+    if (x + PIPE_W > PLAYER_X - 2 && x < bx) { bx = x; best = p; }
+  }
+  return best;
+}
+
+// Heuristic de xuat hanh dong; DFS kiem tra duong song.
+const AUTO_MARGIN = 16, PLAN_H = 46, PLAN_YS = 560, PLAN_Y0 = 128;
+const planMemo = new Uint32Array((PLAN_H + 1) * PLAN_YS * 20);
+let planGen = 0;
+function crashAt(rects, y) {
+  if (y + PLAYER_H >= GROUND_Y - 1) return true;
+  const py = Math.trunc(y);
+  for (const r of rects) if (PLAYER_X < r.x + PIPE_W && PLAYER_X + PLAYER_W > r.x && (py < r.top || py + PLAYER_H > r.bot)) return true;
+  return false;
+}
+function planStep(rects, d, y, vel, a) { // tra ve true neu sau hanh dong a van con duong song toi het tam nhin
+  let v = vel;
+  if (a === 1 && y > -2 * PLAYER_H) v = FLAP_VEL; else if (a === 1) return false; else if (v < MAX_VEL) v += 1;
+  const ny = y + Math.min(v, GROUND_Y - y - PLAYER_H);
+  return !crashAt(rects[d + 1], ny) && planSurvive(rects, d + 1, ny, v);
+}
+function planSurvive(rects, d, y, vel) {
+  if (d >= PLAN_H) return true;
+  const key = (d * PLAN_YS + (y + PLAN_Y0)) * 20 + (vel + 9), m = planMemo[key];
+  if (m >>> 1 === planGen) return (m & 1) === 1;
+  const ok = planStep(rects, d, y, vel, 0) || planStep(rects, d, y, vel, 1);
+  planMemo[key] = planGen * 2 + (ok ? 1 : 0);
+  return ok;
+}
+function autopilot(sim) {
+  const p = nextPipe(sim.activePipes(), sim.n);
+  const floor = p ? p.bot : GROUND_Y - 60;
+  const a0 = sim.y + PLAYER_H + Math.min(sim.vel + 1, MAX_VEL) > floor - AUTO_MARGIN ? 1 : 0;
+  planGen++;
+  const rects = [];
+  for (let d = 0; d <= PLAN_H; d++) {
+    const n = sim.n + d;
+    rects.push(sim.track.active(n).map((q) => ({ x: Math.trunc(q.abs - PIPE_VEL * n), top: q.top, bot: q.bot })));
+  }
+  if (planStep(rects, 0, sim.y, sim.vel, a0)) return a0;
+  if (planStep(rects, 0, sim.y, sim.vel, 1 - a0)) return 1 - a0;
+  return a0;
+}
+
+// Dueling DQN MLP chay bang JS (weights xuat tu notebook, che do state)
+function b64ToF32(b64) {
+  const bin = atob(b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return new Float32Array(u8.buffer);
+}
+class DuelingMLP {
+  constructor(json) {
+    const T = (k) => {
+      const t = json.tensors[k];
+      if (!t) throw new Error('Thiếu tensor ' + k);
+      return { shape: t.shape, data: typeof t.data === 'string' ? b64ToF32(t.data) : Float32Array.from(t.data.flat(2)) };
+    };
+    const L = (name) => ({ W: T(name + '.weight'), b: T(name + '.bias') });
+    this.f0 = L('features.0'); this.f2 = L('features.2');
+    this.v0 = L('value_stream.0'); this.v2 = L('value_stream.2');
+    this.a0 = L('advantage_stream.0'); this.a2 = L('advantage_stream.2');
+  }
+  static lin(l, x, relu) {
+    const [out, inn] = l.W.shape, W = l.W.data, b = l.b.data, y = new Float32Array(out);
+    for (let o = 0, k = 0; o < out; o++) {
+      let s = b[o];
+      for (let i = 0; i < inn; i++, k++) s += W[k] * x[i];
+      y[o] = relu && s < 0 ? 0 : s;
+    }
+    return y;
+  }
+  forward(obs) {
+    const f = DuelingMLP.lin(this.f2, DuelingMLP.lin(this.f0, obs, true), true);
+    const v = DuelingMLP.lin(this.v2, DuelingMLP.lin(this.v0, f, true), false)[0];
+    const a = DuelingMLP.lin(this.a2, DuelingMLP.lin(this.a0, f, true), false);
+    const m = (a[0] + a[1]) / 2;
+    return [v + a[0] - m, v + a[1] - m];
+  }
+}
+
+// Replay ghi tu notebook -> chuan hoa ve cung cau truc voi mo phong truc tiep
+function parseReplay(json) {
+  if (!json || !Array.isArray(json.episodes) || !json.episodes.length) throw new Error('File replay không có tập nào');
+  const eps = json.episodes.map((e) => {
+    const T = e.y.length, inst = [], cur = [null, null, null];
+    let id = 0;
+    for (let t = 0; t < T; t++) {
+      const row = e.pipes[t];
+      for (let i = 0; i < 3; i++) {
+        const abs = row[i * 2] + PIPE_VEL * t, top = row[i * 2 + 1];
+        const c = cur[i];
+        if (!c || Math.abs(c.abs - abs) > 0.01 || c.top !== top) {
+          if (c) c.end = t;
+          cur[i] = { id: id++, abs, top, bot: top + (json.pipe_gap ?? PIPE_GAP), spawn: t, end: Infinity, scoredAt: -1 };
+          inst.push(cur[i]);
+        }
+      }
+    }
+    // buoc ghi diem: score tang giua khung t va t+1 -> ong co tam gan chim nhat
+    const scoreT = e.score_t ?? new Array(T).fill(0);
+    for (let t = 0; t + 1 < T; t++) {
+      if (scoreT[t + 1] > scoreT[t]) {
+        let best = null, bd = Infinity;
+        for (const p of inst) {
+          if (p.spawn > t || t >= p.end || p.scoredAt >= 0) continue;
+          const d = Math.abs(p.abs - PIPE_VEL * t + PIPE_W / 2 - (PLAYER_X + PLAYER_W / 2));
+          if (d < bd) { bd = d; best = p; }
+        }
+        if (best) best.scoredAt = t;
+      }
+    }
+    return { T, y: e.y, vel: e.vel, rot: e.rot, scoreT, act: e.act ?? [], q: e.q ?? null, inst,
+             terminated: e.terminated !== false, score: e.score ?? scoreT[T - 1] ?? 0 };
+  });
+  return { mode: json.mode ?? '?', episodes: eps };
+}
+
+// 2. DIEU PHOI VAN CHOI — gop mo phong truc tiep (tu lai / tu choi / MLP) va replay
+const SPEEDS = [0.25, 0.5, 1, 2, 4, 8];
+const liveSnap = (s) => ({ y: s.y, rot: s.rot, vel: s.vel });
+const repSnap = (ep, i) => ({ y: ep.y[i], rot: ep.rot[i], vel: ep.vel[i] });
+
+const Game = {
+  mode: 'auto', sim: new FlappySim(), net: null, replay: null, epi: 0, ri: 0,
+  n: 0, prev: null, cur: null, score: 0, best: 0, episode: 1,
+  dead: false, ended: false, ready: false, deadT: 0,
+  action: 0, q: null, qHist: [], pendingFlap: false, paused: false, speed: 1, acc: 0,
+  on: { flap() {}, score() {}, crash() {}, reset() {}, mode() {} },
+
+  ep() { return this.replay.episodes[this.epi]; },
+  pipes() { return this.mode === 'replay' ? this.ep().inst : this.sim.pipes; },
+  activePipes() { const n = this.n; return this.pipes().filter((p) => p.spawn <= n && n < p.end); },
+  get running() { return !(this.paused || this.dead || this.ended || this.ready); },
+  // thoi diem ve (tinh theo buoc mo phong, co noi suy)
+  get t() { return Math.max(0, this.n - 1 + Math.min(1, this.acc)); },
+  get alpha() { return this.n === 0 ? 1 : Math.min(1, this.acc); },
+
+  restart() {
+    this.dead = this.ended = false; this.deadT = 0; this.acc = 0;
+    this.q = null; this.action = 0; this.qHist.length = 0; this.pendingFlap = false; this.n = 0;
+    if (this.mode === 'replay') {
+      const ep = this.ep();
+      for (const p of ep.inst) p.fx = false;
+      this.ri = 0; this.prev = this.cur = repSnap(ep, 0); this.score = ep.scoreT[0] || 0; this.ready = false;
+    } else {
+      this.sim.reset(); this.prev = this.cur = liveSnap(this.sim); this.score = 0; this.ready = this.mode === 'human';
+    }
+    this.on.reset();
+  },
+  setMode(mode) {
+    this.mode = mode; this.episode = 1; this.paused = false;
+    this.restart(); this.on.mode();
+  },
+  nextEpisode() {
+    this.episode++;
+    if (this.mode === 'replay') this.epi = (this.epi + 1) % this.replay.episodes.length;
+    this.restart();
+  },
+  seek(i) { // tua replay
+    if (this.mode !== 'replay') return;
+    const ep = this.ep();
+    this.ri = this.n = Math.max(0, Math.min(ep.T - 1, i | 0));
+    this.prev = this.cur = repSnap(ep, this.ri); this.acc = 1;
+    this.score = ep.scoreT[this.ri] || 0; this.dead = this.ended = false; this.deadT = 0; this.qHist.length = 0;
+    this.q = ep.q && this.ri > 0 ? ep.q[this.ri - 1] : null; this.action = this.ri > 0 ? ep.act[this.ri - 1] ?? 0 : 0;
+  },
+  flap() {
+    if (this.mode !== 'human') return;
+    if (this.dead) { if (this.deadT > 0.45) this.restart(); return; }
+    this.ready = false; this.pendingFlap = true;
+  },
+
+  step() {
+    if (this.dead || this.ended || this.ready) return;
+    this.prev = this.cur;
+    if (this.mode === 'replay') {
+      const ep = this.ep(), i = this.ri;
+      if (i >= ep.T - 1) { this.ended = true; return; }
+      this.action = ep.act[i] ?? 0; this.q = ep.q ? ep.q[i] : null;
+      this.ri = this.n = i + 1; this.cur = repSnap(ep, this.ri);
+      if (this.action === 1) this.on.flap();
+      if (ep.scoreT[this.ri] > ep.scoreT[i]) { this.score = ep.scoreT[this.ri]; this.on.score(); }
+      if (this.ri >= ep.T - 1) { if (ep.terminated) { this.dead = true; this.on.crash(); } else this.ended = true; }
+    } else {
+      const s = this.sim;
+      if (this.mode === 'agent' && this.net) { this.q = this.net.forward(s.observe()); this.action = this.q[1] > this.q[0] ? 1 : 0; }
+      else if (this.mode === 'human') { this.action = this.pendingFlap ? 1 : 0; this.pendingFlap = false; this.q = null; }
+      else { this.action = autopilot(s); this.q = null; }
+      const ev = s.step(this.action);
+      this.n = s.n; this.cur = liveSnap(s);
+      if (ev.flapped) this.on.flap();
+      if (ev.scored.length) { this.score = s.score; this.on.score(); }
+      if (ev.crashed) { this.dead = true; this.on.crash(); }
+    }
+    if (this.q) { this.qHist.push([this.q[0], this.q[1], this.action]); if (this.qHist.length > 160) this.qHist.shift(); }
+    if (this.score > this.best) this.best = this.score;
+  },
+
+  tick(dt) {
+    if (this.paused) return;
+    if (this.dead || this.ended) {
+      this.acc = Math.min(1, this.acc + dt * SIM_FPS * this.speed);
+      this.deadT += dt;
+      if (this.mode !== 'human' && this.deadT > 1.9) this.nextEpisode();
+      return;
+    }
+    if (this.ready) return;
+    this.acc += dt * SIM_FPS * this.speed;
+    let guard = 0;
+    while (this.acc >= 1 && guard++ < 32) {
+      this.acc -= 1; this.step();
+      if (this.dead || this.ended) return;
+    }
+    if (this.acc >= 1) this.acc %= 1;
+  },
+};
+Game.prev = Game.cur = liveSnap(Game.sim);
+
+// 3. RENDERER, HAU KY, BAU TROI, ANH SANG, BO MAU KHUNG CANH
+const S = 0.1;                                              // 1px game = 0.1 don vi the gioi
+const wx = (gx) => (gx - (PLAYER_X + PLAYER_W / 2)) * S;    // tam chim nam tai X = 0
+const wy = (gy) => (GROUND_Y - gy) * S;                     // mat dat nam tai Y = 0
+const SKY_TOP = wy(0);                                      // 40.4
+const D2R = Math.PI / 180;
+const lerp = (a, b, k) => a + (b - a) * k;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const smooth = (a, b, v) => { const k = clamp((v - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
+const damp = (cur, target, lambda, dt) => lerp(cur, target, 1 - Math.exp(-lambda * dt));
+const srand = mulberry32(20240607);                          // RNG co dinh cho canh vat
+const rr = (a, b) => a + (b - a) * srand();
+
+const canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0xcfeaff, 0.0015);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 6000);
+
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.75, 0.92);
+composer.addPass(bloom);
+const grade = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, vig: { value: 0.34 }, flash: { value: 0 }, sat: { value: 1.08 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float vig, flash, sat; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      float v = smoothstep(0.92, 0.28, length((vUv - 0.5) * vec2(1.0, 0.86)));
+      c.rgb *= mix(1.0 - vig, 1.0, v);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb = mix(vec3(l), c.rgb, sat) + flash;
+      gl_FragColor = c;
+    }`,
+});
+composer.addPass(grade);
+composer.addPass(new OutputPass());
+const fxaa = new ShaderPass(FXAAShader);   // khu rang cua re, dung thay MSAA tren GPU yeu
+composer.addPass(fxaa);
+
+// muc chat luong + tu dieu chinh theo thoi gian GPU thuc te
+// Can bang dung FXAA; Tu dong dieu chinh do phan giai theo thoi gian GPU.
+const TIERS = {
+  high: { msaa: 4, fxaa: false, shadow: 2048, soft: true, bloomScale: 1, maxDpr: 2 },
+  balanced: { msaa: 0, fxaa: true, shadow: 2048, soft: true, bloomScale: 0.5, maxDpr: 1.5 },
+  light: { msaa: 0, fxaa: true, shadow: 1024, soft: false, bloomScale: 0.5, maxDpr: 1 },
+};
+const glc = renderer.getContext();
+const dbgInfo = glc.getExtension('WEBGL_debug_renderer_info');
+const gpuName = dbgInfo ? String(glc.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL)) : '';
+const weakGPU = /Intel|UHD|Iris|HD Graphics|SwiftShader|llvmpipe|Basic Render|Mali|Adreno|PowerVR/i.test(gpuName) && !/Arc/i.test(gpuName);
+const perf = { auto: true, name: '', tier: null, scale: 1, gpuMs: 0, sum: 0, n: 0, t: 0, q: null, pending: null,
+  ext: glc.getExtension('EXT_disjoint_timer_query_webgl2') };
+function setTier(name) {
+  const tr = TIERS[name];
+  perf.name = name; perf.tier = tr;
+  perf.scale = perf.auto ? Math.min(perf.scale, tr.maxDpr) : Math.min(window.devicePixelRatio || 1, tr.maxDpr);
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) { rt.samples = tr.msaa; rt.dispose(); }
+  fxaa.enabled = tr.fxaa;
+  const type = tr.soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+  if (renderer.shadowMap.type !== type) {
+    renderer.shadowMap.type = type;
+    scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+  }
+  if (keyLight.shadow.mapSize.x !== tr.shadow) {
+    keyLight.shadow.mapSize.set(tr.shadow, tr.shadow);
+    if (keyLight.shadow.map) { keyLight.shadow.map.dispose(); keyLight.shadow.map = null; }
+  }
+  resize();
+}
+function setQuality(v) { // 'auto' | ten muc
+  perf.auto = v === 'auto';
+  if (perf.auto) { perf.scale = weakGPU ? 1 : Math.min(window.devicePixelRatio || 1, 2); setTier(weakGPU ? 'balanced' : 'high'); }
+  else setTier(v);
+  $('sel-q').value = v;
+}
+function perfBegin() {
+  if (perf.ext && !perf.pending) { perf.q = glc.createQuery(); glc.beginQuery(perf.ext.TIME_ELAPSED_EXT, perf.q); }
+}
+function perfEnd(dt) {
+  if (perf.q) { glc.endQuery(perf.ext.TIME_ELAPSED_EXT); perf.pending = perf.q; perf.q = null; }
+  else if (perf.pending && glc.getQueryParameter(perf.pending, glc.QUERY_RESULT_AVAILABLE)) {
+    if (!glc.getParameter(perf.ext.GPU_DISJOINT_EXT)) { perf.sum += glc.getQueryParameter(perf.pending, glc.QUERY_RESULT) / 1e6; perf.n++; }
+    glc.deleteQuery(perf.pending); perf.pending = null;
+  }
+  perf.t += dt;
+  if (perf.t < 1 || perf.n < 4) return;
+  const ms = (perf.gpuMs = perf.sum / perf.n);
+  perf.sum = perf.n = perf.t = 0;
+  if (!perf.auto) return;
+  const maxS = Math.min(window.devicePixelRatio || 1, perf.tier.maxDpr);
+  if (ms > 13.5) {
+    if (perf.name === 'high') setTier('balanced');
+    else if (perf.scale > 0.71) { perf.scale = Math.max(0.7, perf.scale * (ms > 20 ? 0.76 : 0.88)); resize(); }
+    else if (perf.name === 'balanced') setTier('light');
+  } else if (ms < 7.5) {
+    if (perf.scale < maxS - 0.01) { perf.scale = Math.min(maxS, perf.scale * 1.1); resize(); }
+    else if (perf.name === 'light' && ms < 5.5) setTier('balanced');
+    else if (perf.name === 'balanced' && ms < 3.2) setTier('high');
+  }
+}
+
+// bo mau
+const THEMES = {
+  day: { zenith: 0x1a63d8, mid: 0x5aaeff, horizon: 0xc4e6ff, sun: 0xfff0c4, sunI: 1.0, sunEl: 34, sunAz: 52,
+    hemiSky: 0xd4eaff, hemiGnd: 0x93b56e, hemiI: 1.25, key: 0xfff0d2, keyI: 2.7, rimI: 0.7,
+    fog: 0xcfe9ff, fogD: 0.00095, waterDeep: 0x125fa6, waterShallow: 0x49b6e6, cloud: 0xffffff, cloudEm: 0.34,
+    night: 0, bloom: 0.3, exposure: 1.0, glow: 0 },
+  sunset: { zenith: 0x24246e, mid: 0xd65f7e, horizon: 0xffbe78, sun: 0xff9a4a, sunI: 1.0, sunEl: 6.5, sunAz: 50,
+    hemiSky: 0xffb199, hemiGnd: 0x6b4a60, hemiI: 0.9, key: 0xffb27a, keyI: 2.2, rimI: 1.9,
+    fog: 0xeea184, fogD: 0.00125, waterDeep: 0x2a2358, waterShallow: 0xd9736a, cloud: 0xffc4ab, cloudEm: 0.22,
+    night: 0.12, bloom: 0.36, exposure: 0.96, glow: 0.4 },
+  night: { zenith: 0x030614, mid: 0x0c1a44, horizon: 0x27407e, sun: 0xcfdcff, sunI: 0.42, sunEl: 30, sunAz: 48,
+    hemiSky: 0x5673c8, hemiGnd: 0x182744, hemiI: 0.95, key: 0xa9bfff, keyI: 1.45, rimI: 1.0,
+    fog: 0x13214a, fogD: 0.0021, waterDeep: 0x040a20, waterShallow: 0x24439a, cloud: 0x5669a6, cloudEm: 0.12,
+    night: 1, bloom: 0.58, exposure: 1.1, glow: 1 },
+};
+const THEME_ORDER = ['day', 'sunset', 'night'];
+const TH_COLORS = ['zenith', 'mid', 'horizon', 'sun', 'hemiSky', 'hemiGnd', 'key', 'fog', 'waterDeep', 'waterShallow', 'cloud'];
+const TH_NUMS = ['sunI', 'sunEl', 'sunAz', 'hemiI', 'keyI', 'rimI', 'fogD', 'cloudEm', 'night', 'bloom', 'exposure', 'glow'];
+const mkTheme = (t) => { const o = {}; for (const k of TH_COLORS) o[k] = new THREE.Color(t[k]); for (const k of TH_NUMS) o[k] = t[k]; return o; };
+const TH = mkTheme(THEMES.day);          // gia tri hien tai (dang noi suy)
+let thFrom = mkTheme(THEMES.day), thTo = mkTheme(THEMES.day), thK = 1, themeName = 'day', bloomOn = true;
+const sunDir = new THREE.Vector3(0, 1, 0);
+function setTheme(name, instant) {
+  if (!THEMES[name]) return;
+  themeName = name; thFrom = mkTheme(TH); thTo = mkTheme(THEMES[name]); thK = instant ? 1 : 0;
+  if (instant) { for (const c of TH_COLORS) TH[c].copy(thTo[c]); for (const n of TH_NUMS) TH[n] = thTo[n]; }
+  $('sel-theme').value = name;
+}
+
+// bau troi
+const SKY_GLSL = `
+  uniform vec3 uZenith, uMid, uHorizon, uSun, uSunDir; uniform float uSunI;
+  vec3 skyColor(vec3 d){
+    float h = d.y;
+    vec3 c = mix(uHorizon, uMid, smoothstep(0.0, 0.2, h));
+    c = mix(c, uZenith, smoothstep(0.16, 0.72, h));
+    c = mix(c, uHorizon * 0.82, smoothstep(0.0, -0.3, h));
+    float sd = max(dot(d, uSunDir), 0.0);
+    c += uSun * uSunI * (pow(sd, 5.0) * 0.16 + pow(sd, 36.0) * 0.3 + pow(sd, 420.0) * 0.9);
+    return c;
+  }`;
+const skyU = {
+  uZenith: { value: TH.zenith }, uMid: { value: TH.mid }, uHorizon: { value: TH.horizon }, uSun: { value: TH.sun },
+  uSunDir: { value: sunDir }, uSunI: { value: 1 }, uNight: { value: 0 }, uTime: { value: 0 },
+};
+const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 24), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false, uniforms: skyU,
+  vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: SKY_GLSL + `
+    uniform float uNight, uTime; varying vec3 vDir;
+    float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    void main(){
+      vec3 d = normalize(vDir);
+      vec3 c = skyColor(d);
+      float sd = max(dot(d, uSunDir), 0.0);
+      c += uSun * uSunI * smoothstep(0.99925, 0.99955, sd) * 7.0;            // dia mat troi / mat trang
+      vec3 p = d * 190.0; vec3 ip = floor(p); float r = hash(ip);
+      float star = step(0.9962, r) * smoothstep(0.42, 0.0, length(fract(p) - 0.5));
+      star *= 0.55 + 0.45 * sin(uTime * 2.2 + r * 90.0);
+      c += vec3(0.9, 0.95, 1.0) * star * uNight * smoothstep(0.02, 0.3, d.y) * 2.6;
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+}));
+sky.renderOrder = -10; sky.frustumCulled = false;
+scene.add(sky);
+
+// anh sang
+const hemi = new THREE.HemisphereLight(0xffffff, 0x88aa66, 1.2);
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+keyLight.position.set(-16, 52, 34); keyLight.target.position.set(8, 0, 0);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+Object.assign(keyLight.shadow.camera, { left: -62, right: 62, top: 46, bottom: -40, near: 1, far: 160 });
+keyLight.shadow.bias = -0.0005; keyLight.shadow.normalBias = 0.04;
+const rimLight = new THREE.DirectionalLight(0xffffff, 1);
+scene.add(hemi, keyLight, keyLight.target, rimLight, rimLight.target);
+
+// Cac ham "ban theo khung canh" duoc cac phan sau dang ky vao day
+const themeHooks = [];
+function updateTheme(dt, time) {
+  if (thK < 1) {
+    thK = Math.min(1, thK + dt / 2.6);
+    const k = thK * thK * (3 - 2 * thK);
+    for (const c of TH_COLORS) TH[c].lerpColors(thFrom[c], thTo[c], k);
+    for (const n of TH_NUMS) TH[n] = lerp(thFrom[n], thTo[n], k);
+  }
+  const el = TH.sunEl * D2R, az = TH.sunAz * D2R;
+  sunDir.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
+  skyU.uSunI.value = TH.sunI; skyU.uNight.value = TH.night; skyU.uTime.value = time;
+  hemi.color.copy(TH.hemiSky); hemi.groundColor.copy(TH.hemiGnd); hemi.intensity = TH.hemiI;
+  keyLight.color.copy(TH.key); keyLight.intensity = TH.keyI;
+  rimLight.color.copy(TH.sun); rimLight.intensity = TH.rimI;
+  rimLight.position.copy(sunDir).multiplyScalar(120); rimLight.position.y = Math.max(rimLight.position.y, 18);
+  scene.fog.color.copy(TH.fog); scene.fog.density = TH.fogD;
+  bloom.strength = bloomOn ? TH.bloom : 0;
+  renderer.toneMappingExposure = TH.exposure;
+  for (const h of themeHooks) h(TH, time);
+}
+
+// 4. THE GIOI — duong bay, mat nuoc, nui, dao, may, den duong, khinh khi cau
+const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
+const v3 = (a) => (typeof a === 'number' ? new THREE.Vector3(a, a, a) : new THREE.Vector3(a[0], a[1], a[2]));
+// Mot manh hinh hoc da to mau + dat vi tri, de gop nhieu manh thanh 1 mesh (1 draw call)
+function part(geo, color, pos = [0, 0, 0], scale = 1, rot = [0, 0, 0]) {
+  const g = geo.index ? geo.toNonIndexed() : geo.clone();
+  g.deleteAttribute('uv');
+  g.applyMatrix4(_m4.compose(v3(pos), _q.setFromEuler(_e.set(rot[0], rot[1], rot[2])), v3(scale)));
+  const c = new THREE.Color(color), n = g.attributes.position.count, arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  return g;
+}
+const merge = (parts) => mergeGeometries(parts, false);
+const lowpoly = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9, metalness: 0 });
+function canvasTex(w, h, draw, rx = 1, ry = 1) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
+// vat the troi theo the gioi (quan quanh khi ra khoi tam nhin)
+const scrollers = [];
+function addScroller(obj, x0, span, o = {}) {
+  scrollers.push({ obj, x0, span, center: o.center ?? 0, rate: o.rate ?? 1, drift: o.drift ?? 0, grow: o.grow ?? 0,
+    s: obj.scale.x, bob: o.bob ?? 0, y0: obj.position.y, ph: srand() * 6.28 });
+  scene.add(obj);
+}
+function updateScrollers(scroll, time) {
+  for (const s of scrollers) {
+    const half = s.span / 2;
+    const x = (((s.x0 - scroll * s.rate - time * s.drift + half) % s.span) + s.span) % s.span - half;
+    s.obj.position.x = x + s.center;
+    if (s.grow) s.obj.scale.setScalar(s.s * Math.max(smooth(0, s.grow, half - Math.abs(x)), 0.001));
+    if (s.bob) s.obj.position.y = s.y0 + Math.sin(time * 0.6 + s.ph) * s.bob;
+  }
+}
+
+// duong bay (dai dat co chay duoi day ong)
+const TRACK_LEN = 2400, TRACK_W = 15, GRASS_TILE = 10, DIRT_TILE = 12;
+const grassTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#76d047'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#64bf3b';
+  for (let i = -2; i < 4; i++) {
+    const x = (i * w) / 2;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x + w / 4, 0); g.lineTo(x + w / 4 + h / 2, h); g.lineTo(x + h / 2, h); g.fill();
+  }
+  for (const y of [0, h - 18]) { g.fillStyle = '#a4ea6c'; g.fillRect(0, y, w, 18); }
+  g.fillStyle = '#4c9c2e'; g.fillRect(0, 18, w, 4); g.fillRect(0, h - 22, w, 4);
+}, TRACK_LEN / GRASS_TILE, 1);
+const dirtTex = canvasTex(256, 128, (g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, 0, h);
+  gr.addColorStop(0, '#c08a52'); gr.addColorStop(1, '#6f4a2c');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(60,35,18,.28)';
+  for (let i = 0; i < 26; i++) {
+    const x = srand() * w, y = 34 + srand() * (h - 44), rx = 5 + srand() * 12, ry = 3 + srand() * 5;
+    for (const dx of [-w, 0, w]) { g.beginPath(); g.ellipse(x + dx, y, rx, ry, 0, 0, 6.3); g.fill(); }
+  }
+  g.fillStyle = 'rgba(255,225,170,.16)'; g.fillRect(0, 62, w, 3); g.fillRect(0, 96, w, 2);
+  g.fillStyle = '#58b136'; g.fillRect(0, 0, w, 16);
+  for (let i = 0; i < 8; i++) { g.beginPath(); g.arc(i * 32 + 16, 16, 16, 0, Math.PI); g.fill(); }
+  g.fillStyle = '#479a2b'; g.fillRect(0, 0, w, 5);
+}, TRACK_LEN / DIRT_TILE, 1);
+const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.95 });
+const dirtMat = new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 1 });
+const plainDirt = new THREE.MeshStandardMaterial({ color: 0x6f4a2c, roughness: 1 });
+const track = new THREE.Mesh(new THREE.BoxGeometry(TRACK_LEN, 3.6, TRACK_W), [plainDirt, plainDirt, grassMat, plainDirt, dirtMat, dirtMat]);
+track.position.set(0, -1.8, 0); track.receiveShadow = true;
+scene.add(track);
+
+// mat nuoc phan chieu bau troi
+const WATER_Y = -2.7;
+const waterU = {
+  ...skyU, uDeep: { value: TH.waterDeep }, uShallow: { value: TH.waterShallow }, uFog: { value: TH.fog },
+  uCam: { value: camera.position }, uScroll: { value: 0 }, uFogD: { value: 0.0015 },
+};
+const water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
+  uniforms: waterU, fog: false,
+  vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+  fragmentShader: SKY_GLSL + `
+    uniform vec3 uDeep, uShallow, uFog, uCam; uniform float uTime, uScroll, uFogD; varying vec3 vW;
+    void wave(vec2 p, vec2 dir, float f, float sp, float a, inout vec2 g, inout float h){
+      float ph = dot(p, dir) * f + uTime * sp; g += dir * (cos(ph) * a * f); h += sin(ph) * a;
+    }
+    void main(){
+      vec2 p = vW.xz + vec2(uScroll, 0.0);
+      float dist = length(uCam - vW);
+      vec2 g = vec2(0.0); float h = 0.0;
+      wave(p, vec2(0.8, 0.6), 0.21, 1.0, 0.55, g, h);
+      wave(p, vec2(-0.6, 0.8), 0.37, 1.4, 0.3, g, h);
+      wave(p, vec2(0.2, -0.98), 0.73, 1.9, 0.15, g, h);
+      wave(p, vec2(-0.9, -0.44), 1.41, 2.6, 0.075, g, h);
+      wave(p, vec2(0.5, 0.87), 2.9, 3.5, 0.035, g, h);
+      float att = 1.0 / (1.0 + dist * 0.022);   // nuoc xa phang dan -> khong bi soc/moire o duong chan troi
+      g *= att; h *= att;
+      vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
+      vec3 V = normalize(uCam - vW);
+      vec3 R = reflect(-V, N); R.y = abs(R.y);
+      float fr = 0.05 + 0.95 * pow(1.0 - max(dot(N, V), 0.0), 4.0);
+      vec3 base = mix(uDeep, uShallow, clamp(0.3 + h * 0.4, 0.0, 1.0) * 0.55);
+      vec3 c = mix(base, skyColor(R), fr);
+      c += uSun * uSunI * pow(max(dot(R, uSunDir), 0.0), 240.0) * 2.2;       // vet nang lap lanh
+      gl_FragColor = vec4(mix(c, uFog, 1.0 - exp(-uFogD * uFogD * dist * dist)), 1.0);
+    }`,
+}));
+water.position.y = WATER_Y;
+scene.add(water);
+
+// nui xa
+const hash3 = (x, y, z) => { const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453; return s - Math.floor(s); };
+for (let i = 0; i < 20; i++) {
+  const h = rr(130, 300), r = h * rr(0.85, 1.35);
+  const g = new THREE.ConeGeometry(r, h, 7, 4).toNonIndexed();
+  const pos = g.attributes.position, col = new Float32Array(pos.count * 3);
+  const rock1 = new THREE.Color(0x3f4f7e), rock2 = new THREE.Color(0x7c90ba), snow = new THREE.Color(0xf6f9ff), c = new THREE.Color();
+  for (let k = 0; k < pos.count; k++) {
+    let x = pos.getX(k), y = pos.getY(k), z = pos.getZ(k);
+    const t = (y + h / 2) / h, j = hash3(x, y, z);
+    if (t > 0.01 && t < 0.99) { x += (j - 0.5) * r * 0.22; z += (hash3(z, x, y) - 0.5) * r * 0.22; y += (hash3(y, z, x) - 0.5) * h * 0.07; }
+    pos.setXYZ(k, x, y, z);
+    if (t > 0.6 + (j - 0.5) * 0.14) c.copy(snow); else c.lerpColors(rock1, rock2, t * 1.3);
+    col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const m = new THREE.Mesh(g, lowpoly);
+  m.position.set(0, h / 2 - 8, rr(-1050, -640)); m.rotation.y = rr(0, 6.28);
+  addScroller(m, (i / 20) * 3200 + rr(-60, 60), 3200, { grow: 260 });
+}
+
+// dao + cay
+const G_ICO0 = new THREE.IcosahedronGeometry(1, 0), G_ICO1 = new THREE.IcosahedronGeometry(1, 1), G_ICO2 = new THREE.IcosahedronGeometry(1, 2);
+const G_CONE6 = new THREE.ConeGeometry(1, 1, 6), G_CYL6 = new THREE.CylinderGeometry(1, 1, 1, 6);
+function treeParts(parts, x, y, z, s) {
+  if (srand() < 0.6) {
+    const gcol = [0x2f8f4e, 0x37a35a, 0x2a7f55][Math.floor(srand() * 3)];
+    parts.push(part(G_CYL6, 0x7a5232, [x, y + 0.7 * s, z], [0.26 * s, 1.5 * s, 0.26 * s]));
+    parts.push(part(G_CONE6, gcol, [x, y + 2.6 * s, z], [1.5 * s, 3 * s, 1.5 * s], [0, srand() * 3, 0]));
+    parts.push(part(G_CONE6, gcol, [x, y + 4.3 * s, z], [1.1 * s, 2.5 * s, 1.1 * s], [0, srand() * 3, 0]));
+  } else {
+    parts.push(part(G_CYL6, 0x8a5c36, [x, y + 1.1 * s, z], [0.3 * s, 2.3 * s, 0.3 * s]));
+    parts.push(part(G_ICO1, [0x5cbf4a, 0x79cf52, 0xf2a65a][Math.floor(srand() * 2.3)], [x, y + 3.3 * s, z], [1.8 * s, 1.6 * s, 1.8 * s], [srand(), srand(), 0]));
+  }
+}
+function makeIsland(r) {
+  const parts = [], sy = rr(0.26, 0.4);
+  parts.push(part(new THREE.SphereGeometry(r, 10, 6), 0xecdca6, [0, -0.5, 0], [1.13, 0.13, 1.13]));
+  parts.push(part(new THREE.SphereGeometry(r, 10, 6), [0x6cc24a, 0x5fb558, 0x7ccb50][Math.floor(srand() * 3)], [0, 0, 0], [1, sy, 1], [0, srand() * 6, 0]));
+  const n = Math.round(r * rr(0.25, 0.5));
+  for (let i = 0; i < n; i++) {
+    const a = srand() * 6.28, d = Math.sqrt(srand()) * r * 0.72;
+    treeParts(parts, Math.cos(a) * d, sy * Math.sqrt(r * r - d * d) - 0.4, Math.sin(a) * d, rr(0.9, 1.9));
+  }
+  if (srand() < 0.5) parts.push(part(G_ICO0, 0x9aa3ad, [r * 0.8, 0.4, r * 0.3], [rr(1.5, 3), rr(1, 2), rr(1.5, 3)], [srand(), srand(), srand()]));
+  return new THREE.Mesh(merge(parts), lowpoly);
+}
+for (let i = 0; i < 22; i++) {
+  const r = rr(8, 26), isl = makeIsland(r);
+  const front = i % 4 === 3;
+  isl.position.set(0, WATER_Y, front ? rr(90, 380) : -rr(34 + r, 400));
+  addScroller(isl, (i / 22) * 1800 + rr(-30, 30), 1800, { grow: 140 });
+}
+
+// may
+const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.3, roughness: 1 });
+for (let i = 0; i < 24; i++) {
+  const parts = [], n = 4 + Math.floor(rr(0, 5));
+  for (let k = 0; k < n; k++) {
+    const e = 1 - Math.abs(k - (n - 1) / 2) / n;
+    parts.push(part(G_ICO2, 0xffffff, [(k - (n - 1) / 2) * 1.35 + rr(-0.3, 0.3), rr(-0.15, 0.5) * e, rr(-0.7, 0.7)], [rr(1.2, 1.9) * (0.6 + e), rr(0.8, 1.3) * (0.5 + e), rr(1.1, 1.7)]));
+  }
+  const c = new THREE.Mesh(merge(parts), cloudMat);
+  const far = srand();
+  c.position.set(0, lerp(48, 170, far) + rr(-8, 14), -lerp(70, 900, far) + (i % 6 === 5 ? 560 : 0));
+  c.scale.setScalar(lerp(4, 16, far) * rr(0.8, 1.3));
+  addScroller(c, (i / 24) * 2600 + rr(-50, 50), 2600, { drift: rr(1.5, 5), grow: 200 });
+}
+
+// trang tri ven duong: bui cay, hoa, da, den
+const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: 0xffc46b, emissiveIntensity: 0, roughness: 0.4 });
+const poolTex = canvasTex(128, 128, (g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, 'rgba(255,214,140,1)'); gr.addColorStop(0.5, 'rgba(255,190,110,.35)'); gr.addColorStop(1, 'rgba(255,180,90,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+});
+const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+const DECO_SPAN = 480;
+for (let i = 0; i < 40; i++) {
+  const backSide = i % 2 === 0, z = backSide ? -rr(5.6, 6.8) : rr(5.8, 6.9), parts = [];
+  let obj;
+  if (i % 8 === 0) { // den duong
+    obj = new THREE.Group();
+    const pole = new THREE.Mesh(merge([
+      part(G_CYL6, 0x2c3550, [0, 3.4, 0], [0.16, 6.8, 0.16]), part(G_CYL6, 0x2c3550, [0, 0.25, 0], [0.42, 0.5, 0.42]),
+      part(G_CYL6, 0x2c3550, [0, 6.9, 0.55], [0.1, 1.3, 0.1], [Math.PI / 2, 0, 0]), part(G_CONE6, 0x2c3550, [0, 6.95, 1.1], [0.62, 0.5, 0.62]),
+    ]), lowpoly);
+    pole.castShadow = true;
+    const bulb = new THREE.Mesh(G_ICO1, lampMat); bulb.position.set(0, 6.55, 1.1); bulb.scale.setScalar(0.34);
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(13, 13).rotateX(-Math.PI / 2), poolMat); pool.position.set(0, 0.06, 2.4);
+    obj.add(pole, bulb, pool); obj.position.z = -6.6;
+  } else {
+    const kind = srand();
+    if (kind < 0.45) { // bui cay
+      const c = [0x3fa652, 0x4fb85a, 0x2f9458][Math.floor(srand() * 3)], s = backSide ? rr(0.9, 1.7) : rr(0.5, 0.8);
+      parts.push(part(G_ICO1, c, [0, 0.55 * s, 0], [1.1 * s, 0.8 * s, 0.9 * s]), part(G_ICO1, c, [0.8 * s, 0.4 * s, 0.2], [0.75 * s, 0.6 * s, 0.7 * s]),
+        part(G_ICO1, c, [-0.7 * s, 0.38 * s, -0.1], [0.7 * s, 0.55 * s, 0.65 * s]));
+      if (srand() < 0.5) for (let k = 0; k < 5; k++) parts.push(part(G_ICO0, [0xff6b8b, 0xffd23f, 0xffffff][k % 3], [rr(-1, 1) * s, rr(0.5, 0.95) * s, rr(0.3, 0.75) * s], 0.13));
+    } else if (kind < 0.75) { // khom hoa
+      for (let k = 0; k < 6; k++) {
+        const fx = rr(-1.2, 1.2), fz = rr(-0.4, 0.4), fh = rr(0.5, 1.0), fc = [0xff5d7a, 0xffd23f, 0xffffff, 0xc77dff, 0xff9f43][Math.floor(srand() * 5)];
+        parts.push(part(G_CYL6, 0x3c9a3f, [fx, fh / 2, fz], [0.035, fh, 0.035]), part(G_ICO0, fc, [fx, fh, fz], [0.2, 0.13, 0.2]), part(G_ICO0, 0xfff3a0, [fx, fh + 0.06, fz], 0.08));
+      }
+    } else { // da
+      parts.push(part(G_ICO0, 0x9aa5b4, [0, 0.3, 0], [rr(0.6, 1.1), rr(0.4, 0.7), rr(0.5, 0.9)], [srand(), srand(), srand()]),
+        part(G_ICO0, 0x818c9c, [0.8, 0.2, 0.2], [0.45, 0.32, 0.4], [srand(), srand(), srand()]));
+    }
+    obj = new THREE.Mesh(merge(parts), lowpoly); obj.castShadow = true; obj.position.z = z;
+  }
+  addScroller(obj, (i / 40) * DECO_SPAN + rr(-3, 3), DECO_SPAN, { center: 60, grow: 26 });
+}
+
+// khinh khi cau
+for (let i = 0; i < 4; i++) {
+  const cols = [[0xff5d5d, 0xfff1d0], [0x4aa8ff, 0xffffff], [0xffb347, 0xff6f91], [0x7bd88f, 0xfff7ae]][i];
+  const g = new THREE.SphereGeometry(1, 12, 10).toNonIndexed(); g.deleteAttribute('uv');
+  const pos = g.attributes.position, col = new Float32Array(pos.count * 3), ca = new THREE.Color(cols[0]), cb = new THREE.Color(cols[1]);
+  for (let k = 0; k < pos.count; k += 3) { // to mau theo mui (ca tam giac cung mau)
+    const cx = (pos.getX(k) + pos.getX(k + 1) + pos.getX(k + 2)) / 3, cz = (pos.getZ(k) + pos.getZ(k + 1) + pos.getZ(k + 2)) / 3;
+    const c = Math.floor(((Math.atan2(cz, cx) + Math.PI) / (2 * Math.PI)) * 12) % 2 ? ca : cb;
+    for (let q = 0; q < 3; q++) {
+      const y = pos.getY(k + q), sq = y < 0 ? 1 + y * 0.42 : 1; // bop phan duoi thanh hinh giot nuoc
+      pos.setXYZ(k + q, pos.getX(k + q) * sq, y * (y < 0 ? 1.25 : 1), pos.getZ(k + q) * sq);
+      col[(k + q) * 3] = c.r; col[(k + q) * 3 + 1] = c.g; col[(k + q) * 3 + 2] = c.b;
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const b = new THREE.Mesh(merge([g, part(new THREE.BoxGeometry(1, 1, 1), 0x8a5a33, [0, -1.85, 0], [0.34, 0.28, 0.34]),
+    part(G_CYL6, 0x5b3d24, [0, -1.5, 0], [0.3, 0.5, 0.3])]), lowpoly);
+  b.position.set(0, rr(52, 105), -rr(110, 430)); b.scale.setScalar(rr(7, 11));
+  addScroller(b, i * 420 + rr(0, 200), 1700, { drift: rr(0.8, 2.2), grow: 160, bob: 2.2 });
+}
+
+themeHooks.push((T) => {
+  waterU.uFogD.value = T.fogD;
+  cloudMat.color.copy(T.cloud); cloudMat.emissive.copy(T.cloud); cloudMat.emissiveIntensity = T.cloudEm;
+  lampMat.emissiveIntensity = T.glow * 4.5; poolMat.opacity = T.glow * 0.55;
+});
+
+// 5. NHAN VAT — ong nuoc, ngoi sao thuong, chim
+const PIPE_R = (PIPE_W / 2) * S, LIP_R = PIPE_R * 1.17, LIP_H = 1.5, PIPE_TOP_LEN = 150;
+const pipeTex = canvasTex(256, 8, (g, w, h) => {
+  g.fillStyle = '#5fcf3c'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 8; i++) { // soc doc bong
+    const x = i * 32;
+    g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(x + 4, 0, 5, h);
+    g.fillStyle = 'rgba(0,60,10,.2)'; g.fillRect(x + 20, 0, 9, h);
+  }
+});
+const pipeMat = new THREE.MeshStandardMaterial({ map: pipeTex, color: 0xffffff, roughness: 0.3, metalness: 0.05 });
+const lipMat = new THREE.MeshStandardMaterial({ color: 0x4fc22f, roughness: 0.26, emissive: 0x7dff5a, emissiveIntensity: 0 });
+const lipRingMat = new THREE.MeshStandardMaterial({ color: 0x2f8f1e, roughness: 0.5, emissive: 0xa8ff6a, emissiveIntensity: 0 });
+const G_PIPE = new THREE.CylinderGeometry(PIPE_R, PIPE_R, 1, 32, 1, true).translate(0, 0.5, 0);
+const G_LIP = new THREE.CylinderGeometry(LIP_R, LIP_R, LIP_H, 32).translate(0, LIP_H / 2, 0);
+const G_LIPRING = new THREE.TorusGeometry(LIP_R * 0.86, 0.13, 8, 32).rotateX(Math.PI / 2);
+const G_INNER = new THREE.CircleGeometry(PIPE_R * 0.84, 24).rotateX(-Math.PI / 2);
+const innerMat = new THREE.MeshBasicMaterial({ color: 0x0c2a12 });
+
+// ngoi sao 5 canh
+const starShape = new THREE.Shape();
+for (let i = 0; i < 10; i++) {
+  const a = (i / 10) * Math.PI * 2 + Math.PI / 2, r = i % 2 ? 0.46 : 1;
+  starShape[i ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r);
+}
+const G_STAR = new THREE.ExtrudeGeometry(starShape, { depth: 0.26, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 2 }).translate(0, 0, -0.13);
+const starMat = new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0xffb300, emissiveIntensity: 0.9, roughness: 0.25, metalness: 0.4 });
+const haloTex = canvasTex(128, 128, (g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, 'rgba(255,240,180,.9)'); gr.addColorStop(0.35, 'rgba(255,200,80,.3)'); gr.addColorStop(1, 'rgba(255,180,40,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+});
+const haloMat = new THREE.SpriteMaterial({ map: haloTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.8 });
+
+class PipeView {
+  constructor() {
+    const g = this.group = new THREE.Group();
+    const mk = (geo, mat, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; m.receiveShadow = shadow; g.add(m); return m; };
+    this.lowBody = mk(G_PIPE, pipeMat); this.lowLip = mk(G_LIP, lipMat); this.lowRing = mk(G_LIPRING, lipRingMat, false); this.lowHole = mk(G_INNER, innerMat, false);
+    this.upBody = mk(G_PIPE, pipeMat); this.upLip = mk(G_LIP, lipMat); this.upRing = mk(G_LIPRING, lipRingMat, false);
+    this.star = mk(G_STAR, starMat, false); this.star.scale.setScalar(1.05);
+    this.halo = new THREE.Sprite(haloMat); this.halo.scale.setScalar(6.5); g.add(this.halo);
+    this.lowBody.position.y = -0.4;
+    scene.add(g);
+  }
+  set(p, t, time, birdY) {
+    const x = wx(p.abs - PIPE_VEL * t + PIPE_W / 2), yBot = wy(p.bot), yTop = wy(p.top);
+    this.group.visible = true; this.group.position.x = x;
+    this.lowBody.scale.y = yBot + 0.4 - LIP_H * 0.5;
+    this.lowLip.position.y = yBot - LIP_H; this.lowRing.position.y = yBot; this.lowHole.position.y = yBot + 0.02;
+    this.upBody.position.y = yTop + LIP_H * 0.5; this.upBody.scale.y = PIPE_TOP_LEN;
+    this.upLip.position.y = yTop; this.upRing.position.y = yTop;
+    // ngoi sao: bien mat khi da ghi diem, hut nhe ve phia chim khi toi gan
+    const taken = p.scoredAt >= 0 && t >= p.scoredAt;
+    const vis = !taken && x > (camState.mode === 'pov' ? 3.5 : -1);   // goc nhin chim: an sao truoc khi no che ong kinh
+    this.star.visible = this.halo.visible = vis;
+    if (vis) {
+      const mid = (yBot + yTop) / 2, k = smooth(9, 0.5, x);
+      const y = lerp(mid, birdY, k * 0.9) + Math.sin(time * 2.4 + p.id) * 0.35 * (1 - k);
+      this.star.position.y = this.halo.position.y = y;
+      this.star.rotation.y = time * 2.2 + p.id;
+    }
+  }
+}
+const pipeViews = [];
+for (let i = 0; i < 34; i++) pipeViews.push(new PipeView());
+function updatePipes(t, time, birdY) {
+  let k = 0;
+  for (const p of Game.pipes()) {
+    const x = p.abs - PIPE_VEL * t;
+    if (x < -900 || x > 2600 || k >= pipeViews.length) continue;
+    pipeViews[k++].set(p, t, time, birdY);
+  }
+  for (; k < pipeViews.length; k++) pipeViews[k].group.visible = false;
+}
+themeHooks.push((T) => { lipMat.emissiveIntensity = T.glow * 0.16; lipRingMat.emissiveIntensity = T.glow * 1.7; starMat.emissiveIntensity = 0.9 + T.glow * 0.8; });
+
+// chim
+const bird = new THREE.Group();        // vi tri
+const birdTilt = new THREE.Group();    // ngoc len / chui xuong + lan khi chet
+const birdBody = new THREE.Group();    // co gian (squash & stretch)
+bird.add(birdTilt); birdTilt.add(birdBody); scene.add(bird);
+const stdMat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, ...o });
+const M_YEL = stdMat(0xffd02e), M_BELLY = stdMat(0xfff2c2), M_WING = stdMat(0xfff0a8), M_ORANGE = stdMat(0xff7a2f, { roughness: 0.4 }),
+  M_RED = stdMat(0xe8512a, { roughness: 0.4 }), M_WHITE = stdMat(0xffffff, { roughness: 0.3 }), M_BLACK = stdMat(0x1a1a22, { roughness: 0.2 }),
+  M_PINK = stdMat(0xff8fa3, { roughness: 0.8 }), M_TAIL = stdMat(0xf5b81f);
+const G_SPH = new THREE.SphereGeometry(1, 28, 20);
+function bpart(geo, mat, pos, scale, rot, parent = birdBody) {
+  const m = new THREE.Mesh(geo, mat); m.position.set(...pos);
+  if (typeof scale === 'number') m.scale.setScalar(scale); else m.scale.set(...scale);
+  if (rot) m.rotation.set(...rot);
+  m.castShadow = true; parent.add(m); return m;
+}
+bpart(G_SPH, M_YEL, [0, 0, 0], [1.62, 1.26, 1.3]);                                  // than
+bpart(G_SPH, M_BELLY, [0.18, -0.36, 0], [1.34, 0.98, 1.16]);                        // bung
+bpart(G_SPH, M_YEL, [0.55, 0.92, 0], [0.32, 0.4, 0.14], [0, 0, -0.5]);              // mao long
+bpart(G_SPH, M_YEL, [0.3, 1.02, 0], [0.26, 0.34, 0.12], [0, 0, 0.1]);
+for (const sz of [1, -1]) {
+  bpart(G_SPH, M_WHITE, [0.78, 0.36, 0.7 * sz], [0.5, 0.56, 0.42]);                 // mat
+  bpart(G_SPH, M_BLACK, [1.03, 0.36, 0.86 * sz], [0.22, 0.27, 0.2]);                // con nguoi
+  bpart(G_SPH, M_WHITE, [1.13, 0.47, 0.93 * sz], 0.075);                            // dom sang
+  bpart(G_SPH, M_PINK, [0.62, -0.2, 1.09 * sz], [0.26, 0.17, 0.1]);                 // ma hong
+}
+const G_BEAK = new THREE.ConeGeometry(1, 1, 16).rotateZ(-Math.PI / 2);
+bpart(G_BEAK, M_ORANGE, [1.72, -0.02, 0], [0.82, 0.3, 0.6]);                        // mo tren
+bpart(G_BEAK, M_RED, [1.62, -0.27, 0], [0.62, 0.22, 0.5]);                          // mo duoi
+for (const [dy, rz] of [[0.25, 0.5], [0, 0.15], [-0.22, -0.2]]) bpart(G_SPH, M_TAIL, [-1.62, 0.1 + dy, 0], [0.56, 0.13, 0.36], [0, 0, rz]);
+const wings = [1, -1].map((sz) => {
+  const pivot = new THREE.Group(); pivot.position.set(-0.22, 0.08, 1.14 * sz); birdBody.add(pivot);
+  bpart(G_SPH, M_WING, [-0.12, 0, 0.5 * sz], [0.82, 0.12, 0.62], null, pivot);
+  bpart(G_SPH, M_YEL, [-0.42, 0.02, 0.95 * sz], [0.6, 0.1, 0.4], [0, -0.35 * sz, 0], pivot);
+  return { pivot, sz };
+});
+bird.scale.setScalar(1.02);
+
+// bong tron mo duoi mat dat (giup doc do cao)
+const blobTex = canvasTex(64, 64, (g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+});
+const blob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+blob.position.y = 0.05; scene.add(blob);
+
+const birdState = { y: wy(244 + PLAYER_H / 2), pitch: 0.3, wingKick: 0, wingPhase: 0, squash: 0, roll: 0, fallV: 0, fallY: 0, landed: false };
+function onBirdFlap() { birdState.wingKick = 1; birdState.squash = 1; }
+function resetBirdAnim() { Object.assign(birdState, { wingKick: 0, squash: 0, roll: 0, fallV: 0, fallY: 0, landed: false }); }
+// Tra ve cao do (the gioi) cua tam chim
+function updateBird(dt, time) {
+  const a = Game.alpha, st = birdState;
+  let gy = lerp(Game.prev.y, Game.cur.y, a);
+  let rot = Math.min(lerp(Game.prev.rot, Game.cur.rot, a), ROT_THR);
+  if (Game.ready) { gy += Math.sin(time * 4.2) * 6; rot = Math.sin(time * 4.2 + 1.2) * 6; }
+  const floorY = wy(GROUND_Y - PLAYER_H / 2) - 0.25;
+  let y = wy(gy + PLAYER_H / 2);
+  if (Game.dead && !Game.paused) {  // roi tu do sau khi chet (chi la hoat anh, mo phong da dung)
+    st.fallV -= 62 * dt; st.fallY += st.fallV * dt;
+    if (y + st.fallY <= floorY) { st.fallY = floorY - y; if (!st.landed) { st.landed = true; onBirdLand(); } st.fallV = 0; }
+    if (!st.landed) st.roll -= dt * 9;
+  }
+  y = Math.max(y + st.fallY, floorY);
+  st.y = y;
+  bird.position.set(0, y, 0);
+  st.pitch = damp(st.pitch, Game.dead ? -1.45 : rot * D2R, Game.dead ? 6 : 16, dt);
+  birdTilt.rotation.z = st.pitch;
+  birdTilt.rotation.x = Game.dead && !st.landed ? st.roll : damp(birdTilt.rotation.x, 0, 8, dt);
+  // canh: dap manh khi vo, rung nhe khi luon
+  st.wingKick = Math.max(0, st.wingKick - dt * 3.4);
+  st.wingPhase += dt * (Game.dead ? 0 : Game.running || Game.ready ? 13 + st.wingKick * 22 : 3);
+  const amp = Game.dead ? 0.1 : 0.3 + st.wingKick * 0.75;
+  const ang = Math.sin(st.wingPhase) * amp + (Game.dead ? 0.9 : 0.12 - st.wingKick * 0.2);
+  for (const w of wings) w.pivot.rotation.x = -ang * w.sz;
+  st.squash = Math.max(0, st.squash - dt * 5.5);
+  const sq = Math.sin(st.squash * Math.PI) * 0.16;
+  birdBody.scale.set(1 - sq * 0.6, 1 + sq, 1 - sq * 0.3);
+  // bong
+  const hgt = clamp(y / 30, 0, 1);
+  blob.position.x = 0; blob.scale.setScalar(lerp(4.6, 2.2, hgt)); blob.material.opacity = lerp(0.55, 0.16, hgt);
+  return y;
+}
+
+// 6. HIEU UNG — hat, dom dom, tia ngam, am thanh, rung man hinh
+class Particles {
+  constructor(max, additive) {
+    this.max = max; this.cur = 0;
+    this.pos = new Float32Array(max * 3); this.col = new Float32Array(max * 4); this.size = new Float32Array(max);
+    this.vel = new Float32Array(max * 3); this.rgb = new Float32Array(max * 4); this.age = new Float32Array(max).fill(1e9);
+    this.ttl = new Float32Array(max).fill(1); this.grav = new Float32Array(max); this.size0 = new Float32Array(max);
+    this.grow = new Float32Array(max); this.env = new Uint8Array(max);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    g.setAttribute('aColor', new THREE.BufferAttribute(this.col, 4));
+    g.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1));
+    this.uScale = { value: 600 };
+    this.points = new THREE.Points(g, new THREE.ShaderMaterial({
+      uniforms: { uScale: this.uScale }, transparent: true, depthWrite: false, fog: false,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      vertexShader: `attribute vec4 aColor; attribute float aSize; uniform float uScale; varying vec4 vC;
+        void main(){ vC = aColor; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; gl_PointSize = aSize * uScale / max(-mv.z, 0.1); }`,
+      fragmentShader: `varying vec4 vC; void main(){ float d = length(gl_PointCoord - 0.5) * 2.0; float a = smoothstep(1.0, ${additive ? '0.0' : '0.55'}, d) * vC.a; if (a < 0.004) discard; gl_FragColor = vec4(vC.rgb, a); }`,
+    }));
+    this.points.frustumCulled = false; this.points.renderOrder = additive ? 6 : 5;
+    scene.add(this.points);
+  }
+  // env: 0 = mo dan, 1 = hien roi mo (dom dom)
+  emit(x, y, z, vx, vy, vz, r, g, b, a, size, ttl, grav = 0, grow = 0, env = 0) {
+    const i = this.cur; this.cur = (i + 1) % this.max;
+    this.pos.set([x, y, z], i * 3); this.vel.set([vx, vy, vz], i * 3); this.rgb.set([r, g, b, a], i * 4);
+    this.age[i] = 0; this.ttl[i] = ttl; this.grav[i] = grav; this.size0[i] = size; this.grow[i] = grow; this.env[i] = env;
+  }
+  update(dt) {
+    const { pos, vel, col, rgb, age, ttl, size } = this;
+    for (let i = 0; i < this.max; i++) {
+      if (age[i] >= ttl[i]) { size[i] = 0; col[i * 4 + 3] = 0; continue; }
+      age[i] += dt;
+      const k = Math.min(1, age[i] / ttl[i]), j = i * 3;
+      vel[j + 1] -= this.grav[i] * dt;
+      pos[j] += vel[j] * dt; pos[j + 1] += vel[j + 1] * dt; pos[j + 2] += vel[j + 2] * dt;
+      if (this.grav[i] > 0 && pos[j + 1] < 0.15 && Math.abs(pos[j + 2]) < TRACK_W / 2) { pos[j + 1] = 0.15; vel[j + 1] *= -0.35; vel[j] *= 0.7; vel[j + 2] *= 0.7; }
+      const f = this.env[i] ? Math.sin(k * Math.PI) : 1 - k * k;
+      col[i * 4] = rgb[i * 4]; col[i * 4 + 1] = rgb[i * 4 + 1]; col[i * 4 + 2] = rgb[i * 4 + 2]; col[i * 4 + 3] = rgb[i * 4 + 3] * f;
+      size[i] = this.size0[i] * (1 + this.grow[i] * k);
+    }
+    const a = this.points.geometry.attributes;
+    a.position.needsUpdate = a.aColor.needsUpdate = a.aSize.needsUpdate = true;
+  }
+}
+const sparks = new Particles(900, true);   // cong sang (lap lanh)
+const puffs = new Particles(500, false);   // khoi / long vu
+const fx = { shake: 0, flash: 0, trailAcc: 0, flyAcc: 0, beamHot: 0 };
+const worldVel = () => (Game.running ? PIPE_VEL * SIM_FPS * Game.speed * S : 0);
+const rnd = (a, b) => a + Math.random() * (b - a);
+
+function fxFlap() {
+  const y = birdState.y, wv = worldVel();
+  for (let i = 0; i < 4; i++) puffs.emit(rnd(-1.6, -0.6), y + rnd(-1, -0.2), rnd(-0.8, 0.8), -wv * 0.55 + rnd(-2, 1), rnd(-5, -1.5), rnd(-1.5, 1.5), 1, 1, 1, 0.38, rnd(0.45, 0.8), rnd(0.28, 0.45), 0, 1.3);
+  if (Math.random() < 0.5) puffs.emit(-1.2, y, rnd(-0.6, 0.6), -wv * 0.7 + rnd(-3, 0), rnd(1, 5), rnd(-3, 3), 1, 0.86, 0.25, 0.95, 0.42, rnd(0.8, 1.3), 24);
+  fx.beamHot = 1;
+  if (Game.speed <= 2) Sound.flap();
+}
+function fxScore() {
+  const y = birdState.y;
+  for (let i = 0; i < 34; i++) {
+    const a = Math.random() * 6.28, b = rnd(-1, 1), sp = rnd(7, 19);
+    sparks.emit(0.4, y, 0, Math.cos(a) * sp - worldVel() * 0.4, Math.sin(a) * sp, b * sp * 0.6, 1, rnd(0.65, 0.95), rnd(0.1, 0.4), 1, rnd(0.5, 1.1), rnd(0.35, 0.8), 14);
+  }
+  sparks.emit(0.4, y, 0, -worldVel(), 0, 0, 1, 0.9, 0.5, 0.75, 5, 0.3, 0, 2.2);
+  fx.flash = Math.max(fx.flash, 0.05);
+  popScore();
+  if (Game.speed <= 4) Sound.score();
+}
+function fxCrash() {
+  const y = birdState.y;
+  for (let i = 0; i < 46; i++) {
+    const a = Math.random() * 6.28, sp = rnd(4, 20), white = Math.random() < 0.3;
+    puffs.emit(rnd(-0.8, 0.8), y + rnd(-0.6, 0.6), rnd(-0.6, 0.6), Math.cos(a) * sp - 2, Math.sin(a) * sp + 5, rnd(-9, 9), 1, white ? 1 : 0.84, white ? 0.95 : 0.2, 1, rnd(0.3, 0.62), rnd(0.9, 1.9), 34);
+  }
+  for (let i = 0; i < 30; i++) {
+    const a = Math.random() * 6.28, sp = rnd(8, 30);
+    sparks.emit(0.6, y, 0, Math.cos(a) * sp, Math.sin(a) * sp, rnd(-10, 10), 1, rnd(0.5, 0.9), 0.3, 1, rnd(0.4, 0.9), rnd(0.25, 0.6), 10);
+  }
+  sparks.emit(0.6, y, 0, 0, 0, 0, 1, 1, 1, 0.9, 9, 0.22, 0, 1.5);
+  fx.shake = 1; fx.flash = 0.42;
+  Sound.crash();
+}
+function onBirdLand() {
+  for (let i = 0; i < 14; i++) puffs.emit(rnd(-1.5, 1.5), 0.3, rnd(-1, 1), rnd(-7, 7), rnd(1, 5), rnd(-4, 4), 0.86, 0.8, 0.66, 0.6, rnd(0.9, 1.6), rnd(0.4, 0.8), 0, 1.8);
+  fx.shake = Math.max(fx.shake, 0.45);
+  Sound.tone(110, 0.16, 'sine', 0.16, -50);
+}
+
+// tia ngam: tu chim toi 2 mep khe ong ke tiep
+const beamMat = new THREE.MeshBasicMaterial({ color: 0x5fe3ff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+const G_BEAM = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+const beams = [0, 1, 2].map(() => { const m = new THREE.Mesh(G_BEAM, beamMat); m.renderOrder = 4; scene.add(m); return m; });
+const beamDots = [0, 1].map(() => { const m = new THREE.Mesh(G_ICO1, beamMat); m.scale.setScalar(0.34); scene.add(m); return m; });
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function setBeam(m, a, b, r) {
+  _d.subVectors(b, a); const len = _d.length();
+  m.position.copy(a).addScaledVector(_d, 0.5); m.scale.set(r, len, r);
+  m.quaternion.setFromUnitVectors(_up, _d.normalize());
+}
+let visionOn = true;
+const C_IDLE = new THREE.Color(0x5fe3ff), C_FLAP = new THREE.Color(0xff8a3d);
+function updateVision(t, dt) {
+  const p = visionOn && !Game.dead ? nextPipe(Game.activePipes(), Math.floor(t)) : null;
+  const vis = !!p;
+  for (const m of beams) m.visible = vis; for (const m of beamDots) m.visible = vis;
+  if (!vis) return;
+  fx.beamHot = Math.max(0, fx.beamHot - dt * 5);
+  beamMat.color.lerpColors(C_IDLE, C_FLAP, fx.beamHot);
+  const x = Math.max(wx(p.abs - PIPE_VEL * t), 0.4);
+  _a.set(1.2, birdState.y, 0);
+  _b.set(x, wy(p.top), 0); setBeam(beams[0], _a, _b, 0.05); beamDots[0].position.copy(_b);
+  _b.set(x, wy(p.bot), 0); setBeam(beams[1], _a, _b, 0.05); beamDots[1].position.copy(_b);
+  _a.set(x, wy(p.top), 0); setBeam(beams[2], _a, _b, 0.03);
+}
+
+function updateFx(dt, time) {
+  const run = Game.running, wv = worldVel();
+  if (run) { // vet lap lanh sau duoi
+    fx.trailAcc += dt * 46;
+    while (fx.trailAcc > 1) {
+      fx.trailAcc -= 1;
+      sparks.emit(rnd(-1.9, -1.4), birdState.y + rnd(-0.5, 0.5), rnd(-0.5, 0.5), -wv + rnd(-1, 1), rnd(-0.8, 0.8), rnd(-0.8, 0.8), 1, rnd(0.8, 0.95), rnd(0.35, 0.6), 0.5 + TH.glow * 0.3, rnd(0.22, 0.5), rnd(0.35, 0.7), 0, -0.6);
+    }
+  }
+  if (TH.night > 0.3) { // dom dom
+    fx.flyAcc += dt * 16 * TH.night;
+    while (fx.flyAcc > 1) {
+      fx.flyAcc -= 1;
+      sparks.emit(rnd(-40, 90), rnd(0.6, 13), rnd(-16, 16), -wv + rnd(-1.4, 1.4), rnd(-0.6, 0.9), rnd(-1.2, 1.2), 0.75, 1, 0.35, 0.95, rnd(0.25, 0.5), rnd(1.6, 3.2), 0, 0, 1);
+    }
+  }
+  if (!Game.paused) { sparks.update(dt); puffs.update(dt); }
+  fx.shake = Math.max(0, fx.shake - dt * 2.6);
+  fx.flash = Math.max(0, fx.flash - dt * 1.7);
+  grade.uniforms.flash.value = fx.flash * fx.flash * 2.2;
+}
+// loe sang che luc chuyen sang tap moi
+function screenWipe() {
+  const el = $('flash');
+  el.style.transition = 'none'; el.style.opacity = 0.75; void el.offsetWidth;
+  el.style.transition = 'opacity .55s ease-out'; el.style.opacity = 0;
+}
+
+// am thanh tong hop (WebAudio), mac dinh tat
+const Sound = {
+  on: false, ctx: null,
+  tone(freq, dur, type = 'sine', vol = 0.1, slide = 0) {
+    if (!this.on) return;
+    try {
+      this.ctx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) { /* trinh duyet chan am thanh */ }
+  },
+  flap() { this.tone(430, 0.1, 'triangle', 0.07, 300); },
+  score() { this.tone(988, 0.08, 'square', 0.045); setTimeout(() => this.tone(1319, 0.2, 'square', 0.045), 75); },
+  crash() { this.tone(200, 0.38, 'sawtooth', 0.12, -150); },
+};
+
+// 7. CAMERA — 5 goc may, chuyen canh muot
+const CAM_ORDER = ['cinematic', 'classic', 'chase', 'pov', 'orbit'];
+const camState = { mode: 'cinematic', pos: new THREE.Vector3(-30, 30, 78), tgt: new THREE.Vector3(9, 18, 0), fov: 40, yS: 15 };
+const orbit = new OrbitControls(camera, canvas);
+orbit.enabled = false; orbit.enableDamping = true; orbit.dampingFactor = 0.08;
+orbit.minDistance = 8; orbit.maxDistance = 420; orbit.maxPolarAngle = Math.PI * 0.497;
+const _cp = new THREE.Vector3(), _ct = new THREE.Vector3();
+function setCamera(mode) {
+  if (camState.mode === 'orbit' && mode !== 'orbit') { camState.pos.copy(camera.position); camState.tgt.copy(orbit.target); }
+  camState.mode = mode; orbit.enabled = mode === 'orbit';
+  if (mode === 'orbit') { orbit.target.set(8, 17, 0); camera.position.copy(camState.pos); }
+  $('sel-cam').value = mode;
+}
+function updateCamera(dt, time, birdY) {
+  const st = camState, aspect = camera.aspect;
+  st.yS = damp(st.yS, birdY, 3, dt);
+  bird.visible = st.mode !== 'pov';
+  if (st.mode === 'orbit') { orbit.update(); st.fov = damp(st.fov, 42, 4, dt); }
+  else {
+    let fov = 40, lam = 3;
+    if (st.mode === 'classic') {
+      const fit = Math.max(1, 0.72 / aspect);
+      fov = 30; _ct.set(7, 17.4, 0); _cp.set(7, 17.4, 88 * fit);
+    } else if (st.mode === 'chase') {
+      fov = 60; lam = 5;
+      _cp.set(-17, st.yS + 5, 10.5); _ct.set(20, lerp(st.yS, 18, 0.4) - 1, -2.5);
+    } else if (st.mode === 'pov') {
+      fov = 76; lam = 26;
+      _cp.set(1.7, birdY + 0.45, 0); _ct.set(26, birdY + 0.45 + Math.sin(birdState.pitch) * 9, 0);
+    } else {
+      const fit = Math.max(1, 1.5 / aspect);
+      _ct.set(10, 15.6 + (st.yS - 18) * 0.26, 0);
+      _cp.set(-19 + Math.sin(time * 0.17) * 3.2, 21 + (st.yS - 18) * 0.2 + Math.cos(time * 0.13) * 1.3, 57);
+      _cp.sub(_ct).multiplyScalar(fit).add(_ct);
+    }
+    const k = 1 - Math.exp(-lam * dt);
+    st.pos.lerp(_cp, k); st.tgt.lerp(_ct, k); st.fov = lerp(st.fov, fov, 1 - Math.exp(-3 * dt));
+    camera.position.copy(st.pos);
+    if (fx.shake > 0) {
+      const s = fx.shake * fx.shake * 1.5;
+      camera.position.x += (Math.random() - 0.5) * s; camera.position.y += (Math.random() - 0.5) * s;
+    }
+    camera.lookAt(st.tgt);
+  }
+  if (Math.abs(camera.fov - st.fov) > 0.01) { camera.fov = st.fov; camera.updateProjectionMatrix(); }
+}
+
+// 8. GIAO DIEN (HUD) + DIEU KHIEN
+const MODE_LABEL = { auto: 'TỰ LÁI · HEURISTIC', human: 'TỰ CHƠI', agent: 'DQN · MLP TRỰC TIẾP', replay: 'REPLAY · DQN' };
+const MODE_HINT = {
+  auto: 'Đang chạy luật heuristic: vỗ cánh khi bụng chim sắp chạm ngưỡng an toàn phía trên mép ống dưới. Bấm <b>Nạp file</b> để xem agent DQN đã huấn luyện.',
+  human: 'Bạn đang cầm lái. <b>Space</b> hoặc click để vỗ cánh.',
+  agent: 'Mạng Dueling MLP chạy trực tiếp trong trình duyệt trên vector quan sát 12 chiều, hành động = argmax Q.',
+  replay: 'Phát lại đúng quỹ đạo agent đã chơi trong notebook (trạng thái môi trường + Q-value từng bước).',
+};
+let cycleOn = true, scrubbing = false;
+function toast(msg, ms = 3000) {
+  const el = $('toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), ms);
+}
+const _pv = new THREE.Vector3();
+function popScore() {
+  const el = $('score'); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  if (Game.speed > 2) return;
+  _pv.set(0.5, birdState.y + 2.8, 0).project(camera);
+  const d = document.createElement('div'); d.className = 'plus'; d.textContent = '+1';
+  d.style.left = (_pv.x * 0.5 + 0.5) * innerWidth + 'px'; d.style.top = (-_pv.y * 0.5 + 0.5) * innerHeight + 'px';
+  $('hud').appendChild(d); setTimeout(() => d.remove(), 950);
+}
+function refreshModeUI() {
+  for (const b of $('modes').children) {
+    b.classList.toggle('on', b.dataset.mode === Game.mode);
+    b.classList.toggle('nodata', (b.dataset.mode === 'agent' && !Game.net) || (b.dataset.mode === 'replay' && !Game.replay));
+  }
+  $('badge-txt').textContent = MODE_LABEL[Game.mode] + (Game.mode === 'replay' ? ' (' + String(Game.replay.mode).toUpperCase() + ')' : '');
+  $('brain-hint').innerHTML = MODE_HINT[Game.mode];
+  $('brain-title').textContent = Game.mode === 'human' ? 'Thông số bay' : Game.mode === 'auto' ? 'Bộ điều khiển heuristic' : 'Bộ não DQN · Q(s, a)';
+  $('timeline').classList.toggle('show', Game.mode === 'replay');
+  if (Game.mode === 'replay') {
+    const eps = $('eps'); eps.innerHTML = '';
+    Game.replay.episodes.forEach((e, i) => {
+      const b = document.createElement('button'); b.textContent = 'Tập ' + (i + 1) + ' · ' + e.score; b.title = 'Điểm: ' + e.score;
+      b.onclick = () => { Game.epi = i; Game.restart(); b.blur(); };
+      b.classList.toggle('on', i === Game.epi); eps.appendChild(b);
+    });
+  }
+}
+function requestMode(mode) {
+  if (mode === 'agent' && !Game.net) { toast('Chưa có weights. Hãy nạp flappy_mlp_weights.json (xuất từ notebook ở chế độ state).'); $('file').click(); return; }
+  if (mode === 'replay' && !Game.replay) { toast('Chưa có replay. Hãy nạp flappy_replay.json (xuất từ cell “Giao diện 3D” trong notebook).'); $('file').click(); return; }
+  Game.setMode(mode);
+}
+function loadData(json, name = '') {
+  try {
+    if (json && json.episodes) {
+      Game.replay = parseReplay(json); Game.epi = 0; Game.setMode('replay');
+      toast('Đã nạp replay ' + name + ': ' + Game.replay.episodes.length + ' tập · điểm ' + Game.replay.episodes.map((e) => e.score).join(', '));
+    } else if (json && json.tensors) {
+      Game.net = new DuelingMLP(json); Game.setMode('agent');
+      toast('Đã nạp weights ' + name + ' — mạng Dueling MLP đang tự chơi');
+    } else throw new Error('không phải file replay / weights của notebook');
+  } catch (e) { console.error(e); toast('Không đọc được ' + name + ': ' + e.message, 5000); }
+}
+async function loadFiles(files) {
+  for (const f of files) {
+    try { loadData(JSON.parse(await f.text()), f.name); } catch (e) { toast('File ' + f.name + ' không phải JSON hợp lệ', 5000); }
+  }
+}
+function setSpeedIdx(i) {
+  i = clamp(i, 0, SPEEDS.length - 1); $('speed').value = i; Game.speed = SPEEDS[i];
+  $('speedlbl').textContent = SPEEDS[i] + '×';
+}
+function togglePause(v) { Game.paused = v ?? !Game.paused; $('btn-pause').textContent = Game.paused ? 'Tiếp tục' : 'Tạm dừng'; }
+function stepOnce() { togglePause(true); Game.ready = false; Game.step(); Game.acc = 1; }
+function toggleVision() { visionOn = !visionOn; $('tg-vision').classList.toggle('on', visionOn); }
+function toggleSound() { Sound.on = !Sound.on; $('tg-sound').textContent = Sound.on ? 'Âm thanh: bật' : 'Âm thanh: tắt'; $('tg-sound').classList.toggle('on', Sound.on); if (Sound.on) Sound.score(); }
+function toggleFull() { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); }
+const cycle = (arr, cur) => arr[(arr.indexOf(cur) + 1) % arr.length];
+
+$('modes').addEventListener('click', (e) => { const m = e.target.dataset?.mode; if (m) requestMode(m); });
+$('btn-pause').onclick = () => togglePause();
+$('btn-step').onclick = stepOnce;
+$('btn-restart').onclick = () => { togglePause(false); Game.restart(); };
+$('speed').oninput = (e) => setSpeedIdx(+e.target.value);
+$('sel-cam').onchange = (e) => { setCamera(e.target.value); e.target.blur(); };
+$('sel-theme').onchange = (e) => { setTheme(e.target.value); e.target.blur(); };
+$('tg-cycle').onclick = () => { cycleOn = !cycleOn; $('tg-cycle').classList.toggle('on', cycleOn); };
+$('tg-vision').onclick = toggleVision;
+$('tg-sound').onclick = toggleSound;
+$('btn-load').onclick = () => $('file').click();
+$('file').onchange = (e) => { loadFiles([...e.target.files]); e.target.value = ''; };
+$('btn-full').onclick = toggleFull;
+$('btn-help').onclick = () => $('help').classList.add('show');
+$('help-close').onclick = () => $('help').classList.remove('show');
+$('help').onclick = (e) => { if (e.target === $('help')) $('help').classList.remove('show'); };
+$('scrub').addEventListener('pointerdown', () => { scrubbing = true; });
+window.addEventListener('pointerup', () => { scrubbing = false; });
+$('scrub').oninput = (e) => { Game.seek(+e.target.value); resetBirdAnim(); };
+for (const b of document.querySelectorAll('#bar button')) b.addEventListener('click', () => b.blur());
+
+canvas.addEventListener('pointerdown', () => { if (Game.mode === 'human' && camState.mode !== 'orbit') Game.flap(); });
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.code;
+  if (k === 'Space' || k === 'ArrowUp') { e.preventDefault(); if (e.repeat) return; if (Game.mode === 'human') Game.flap(); else togglePause(); }
+  else if (k === 'KeyP') togglePause();
+  else if (k === 'Period') stepOnce();
+  else if (k === 'KeyR') { togglePause(false); Game.restart(); }
+  else if (k === 'Digit1') requestMode('auto');
+  else if (k === 'Digit2') requestMode('human');
+  else if (k === 'Digit3') requestMode('agent');
+  else if (k === 'Digit4') requestMode('replay');
+  else if (k === 'BracketLeft') setSpeedIdx(+$('speed').value - 1);
+  else if (k === 'BracketRight') setSpeedIdx(+$('speed').value + 1);
+  else if (k === 'KeyC') setCamera(cycle(CAM_ORDER, camState.mode));
+  else if (k === 'KeyT') setTheme(cycle(THEME_ORDER, themeName));
+  else if (k === 'KeyV') toggleVision();
+  else if (k === 'KeyB') { bloomOn = !bloomOn; toast('Bloom: ' + (bloomOn ? 'bật' : 'tắt'), 1200); }
+  else if (k === 'KeyM') toggleSound();
+  else if (k === 'KeyH') $('hud').classList.toggle('hidden');
+  else if (k === 'KeyF') toggleFull();
+  else if (k === 'Slash') $('help').classList.toggle('show');
+  else if (k === 'Escape') $('help').classList.remove('show');
+});
+let dragN = 0;
+window.addEventListener('dragenter', (e) => { e.preventDefault(); dragN++; $('drop').classList.add('show'); });
+window.addEventListener('dragleave', () => { if (--dragN <= 0) { dragN = 0; $('drop').classList.remove('show'); } });
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => { e.preventDefault(); dragN = 0; $('drop').classList.remove('show'); loadFiles([...e.dataTransfer.files]); });
+
+// ve HUD moi khung hinh
+const hud = { score: -1, best: -1, fpsT: 0, fpsN: 0, msg: '', epi: -1 };
+const qctx = $('qchart').getContext('2d'), mctx = $('minimap').getContext('2d');
+function setMsg(h, p) {
+  const key = h + '|' + p; if (hud.msg === key) return; hud.msg = key;
+  $('msg').classList.toggle('show', !!h); if (h) { $('msg-h').textContent = h; $('msg-p').innerHTML = p; }
+}
+function drawQChart() {
+  const w = 476, h = 128, H = Game.qHist;
+  qctx.clearRect(0, 0, w, h);
+  if (H.length < 2) return;
+  let lo = Infinity, hi = -Infinity;
+  for (const q of H) { lo = Math.min(lo, q[0], q[1]); hi = Math.max(hi, q[0], q[1]); }
+  const pad = Math.max((hi - lo) * 0.15, 0.02); lo -= pad; hi += pad;
+  const X = (i) => (i / 159) * w, Y = (v) => h - 8 - ((v - lo) / (hi - lo)) * (h - 18);
+  qctx.fillStyle = 'rgba(255,138,61,.5)';
+  H.forEach((q, i) => { if (q[2] === 1) qctx.fillRect(X(i) - 1, h - 6, 3, 6); });
+  for (const [k, col] of [[0, '#5cc8ff'], [1, '#ff8a3d']]) {
+    qctx.beginPath(); H.forEach((q, i) => (i ? qctx.lineTo(X(i), Y(q[k])) : qctx.moveTo(X(i), Y(q[k]))));
+    qctx.strokeStyle = col; qctx.lineWidth = 3; qctx.lineJoin = 'round'; qctx.stroke();
+  }
+  return [lo, hi];
+}
+function drawMinimap(t, gy) {
+  const k = 0.5, c = mctx;
+  c.fillStyle = '#4ec0ca'; c.fillRect(0, 0, 144, 256);
+  c.fillStyle = '#73bf2e'; c.strokeStyle = '#3c6b1a'; c.lineWidth = 1;
+  for (const p of Game.pipes()) {
+    const x = p.abs - PIPE_VEL * t;
+    if (x < -PIPE_W || x > SCREEN_W) continue;
+    c.fillRect(x * k, 0, PIPE_W * k, p.top * k); c.strokeRect(x * k + 0.5, -1, PIPE_W * k, p.top * k + 0.5);
+    c.fillRect(x * k, p.bot * k, PIPE_W * k, (GROUND_Y - p.bot) * k); c.strokeRect(x * k + 0.5, p.bot * k + 0.5, PIPE_W * k, (GROUND_Y - p.bot) * k);
+  }
+  c.fillStyle = '#ded895'; c.fillRect(0, GROUND_Y * k, 144, 256 - GROUND_Y * k);
+  c.fillStyle = '#7bc043'; c.fillRect(0, GROUND_Y * k, 144, 4);
+  c.fillStyle = Game.dead ? '#ff5a5a' : '#f7d51d'; c.strokeStyle = '#3a2a00';
+  c.fillRect(PLAYER_X * k, gy * k, PLAYER_W * k, PLAYER_H * k); c.strokeRect(PLAYER_X * k + 0.5, gy * k + 0.5, PLAYER_W * k, PLAYER_H * k);
+}
+function updateHud(dt, t) {
+  if (hud.score !== Game.score) { hud.score = Game.score; $('score').textContent = Game.score; }
+  if (hud.best !== Game.best) { hud.best = Game.best; $('best-v').textContent = Game.best; }
+  hud.fpsT += dt; hud.fpsN++;
+  if (hud.fpsT > 0.5) {
+    $('st-fps').textContent = Math.round(hud.fpsN / hud.fpsT); hud.fpsT = hud.fpsN = 0;
+    $('st-gpu').textContent = perf.gpuMs ? perf.gpuMs.toFixed(1) : '–';
+  }
+  $('st-ep').textContent = Game.mode === 'replay' ? Game.epi + 1 + '/' + Game.replay.episodes.length : Game.episode;
+  $('st-step').textContent = Game.n;
+
+  // Q-value
+  const q = Game.q;
+  $('qwrap').style.display = q ? '' : 'none';
+  if (q) {
+    const r = drawQChart() ?? [Math.min(q[0], q[1]) - 0.1, Math.max(q[0], q[1]) + 0.1];
+    for (const i of [0, 1]) {
+      $('q' + i).firstElementChild.style.width = clamp(((q[i] - r[0]) / (r[1] - r[0])) * 100, 4, 100) + '%';
+      $('q' + i + 'v').textContent = q[i].toFixed(2);
+      $('row' + i).classList.toggle('win', (q[1] > q[0] ? 1 : 0) === i);
+    }
+  }
+  for (const s of $('act').children) s.classList.toggle('on', !Game.ready && +s.dataset.a === Game.action);
+
+  // quan sat
+  const gy = lerp(Game.prev.y, Game.cur.y, Game.alpha), p = nextPipe(Game.activePipes(), Game.n);
+  if (p) {
+    $('o-dx').textContent = Math.max(0, Math.round(p.abs - PIPE_VEL * t - (PLAYER_X + PLAYER_W)));
+    const dy = Math.round(gy + PLAYER_H / 2 - (p.top + p.bot) / 2);
+    $('o-dy').textContent = (dy > 0 ? '↓' : dy < 0 ? '↑' : '') + Math.abs(dy);
+  }
+  $('o-v').textContent = Game.cur.vel > 0 ? '+' + Game.cur.vel : Game.cur.vel;
+  drawMinimap(t, gy);
+
+  if (Game.mode === 'replay') {
+    const ep = Game.ep(), sc = $('scrub');
+    if (+sc.max !== ep.T - 1) sc.max = ep.T - 1;
+    if (!scrubbing) sc.value = Game.ri;
+    $('tl-lbl').textContent = Game.ri + ' / ' + (ep.T - 1);
+    if (hud.epi !== Game.epi) { hud.epi = Game.epi; [...$('eps').children].forEach((b, i) => b.classList.toggle('on', i === Game.epi)); }
+  }
+
+  if (Game.ready) setMsg('SẴN SÀNG?', 'Nhấn <kbd>Space</kbd> hoặc click để vỗ cánh');
+  else if (Game.dead && Game.mode === 'human') setMsg('GAME OVER', 'Điểm: <b>' + Game.score + '</b> · nhấn <kbd>Space</kbd> để chơi lại');
+  else if (Game.dead) setMsg('VA CHẠM!', 'Tập kết thúc với <b>' + Game.score + '</b> điểm');
+  else if (Game.ended) setMsg('HẾT BẢN GHI', 'Agent vẫn sống tới hết giới hạn bước · <b>' + Game.score + '</b> điểm');
+  else if (Game.paused) setMsg('TẠM DỪNG', 'Nhấn <kbd>P</kbd> để tiếp tục · <kbd>.</kbd> để tiến từng bước');
+  else setMsg('', '');
+}
+
+// 9. NOI SU KIEN + VONG LAP CHINH
+let scrollBase = 0, lastScroll = 0;   // giu canh vat troi lien tuc qua cac tap
+Game.on.flap = () => { onBirdFlap(); fxFlap(); };
+Game.on.score = () => {
+  fxScore();
+  if (cycleOn && Game.score > 0 && Game.score % 10 === 0) setTheme(cycle(THEME_ORDER, themeName));
+};
+Game.on.crash = fxCrash;
+Game.on.reset = () => { scrollBase += lastScroll; lastScroll = 0; resetBirdAnim(); screenWipe(); hud.msg = '?'; };
+Game.on.mode = refreshModeUI;
+
+function resize() {
+  const w = Math.max(8, window.innerWidth), h = Math.max(8, window.innerHeight), pr = perf.scale, tr = perf.tier;
+  renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
+  composer.setPixelRatio(pr); composer.setSize(w, h);
+  if (tr.bloomScale !== 1) bloom.setSize(Math.max(4, w * pr * tr.bloomScale), Math.max(4, h * pr * tr.bloomScale));
+  fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  document.documentElement.style.setProperty('--barh', $('bar').offsetHeight + 'px');   // thanh dieu khien co the xuong dong
+}
+window.addEventListener('resize', resize);
+setQuality('auto');
+$('sel-q').onchange = (e) => { setQuality(e.target.value); e.target.blur(); };
+
+// du lieu nhung san tu notebook (neu co)
+setTheme('day', true); setSpeedIdx(2); refreshModeUI();
+if (window.FLAPPY_WEIGHTS) loadData(window.FLAPPY_WEIGHTS, '(nhúng)');
+if (window.FLAPPY_REPLAY) loadData(window.FLAPPY_REPLAY, '(nhúng)');
+if (Game.mode === 'auto') toast('Đang chạy thử ở chế độ Tự lái · nhấn ? để xem phím tắt · kéo-thả flappy_replay.json để xem agent DQN', 5200);
+
+const clock = new THREE.Clock();
+let time = 0;
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  time += dt;
+  Game.tick(dt);
+  const t = Game.t;
+  lastScroll = t * PIPE_VEL * S;
+  const scroll = scrollBase + lastScroll;
+
+  updateTheme(dt, time);
+  const birdY = updateBird(dt, time);
+  updatePipes(t, time, birdY);
+  updateScrollers(scroll, time);
+  grassTex.offset.x = (scroll / GRASS_TILE) % 1;
+  dirtTex.offset.x = (scroll / DIRT_TILE) % 1;
+  waterU.uScroll.value = scroll;
+  updateVision(t, dt);
+  updateFx(dt, time);
+  updateCamera(dt, time, birdY);
+  sky.position.copy(camera.position);
+  sparks.uScale.value = puffs.uScale.value = renderer.domElement.height / (2 * Math.tan((camera.fov * D2R) / 2));
+  perfBegin();
+  composer.render(dt);
+  perfEnd(dt);
+  updateHud(dt, t);
+}
+window.__flappyReady = true;
+window.__flappy = { Game, FlappySim, autopilot, loadData, setCamera, setTheme, setQuality, perf, THREE, renderer, composer, scene, camera };   // tien debug tu console
+frame();
+</script>
+<script>
+// Bao loi neu khong tai duoc Three.js (mat mang / CDN bi chan)
+window.addEventListener('error', function (e) {
+  if (window.__flappyReady) return;
+  var el = document.getElementById('err');
+  el.style.display = 'flex';
+  el.innerHTML = '<div><b>Không khởi động được giao diện 3D.</b><br>Trang cần Internet để tải Three.js từ cdn.jsdelivr.net.<br><small>' +
+    String(e.message || (e.target && e.target.src) || '') + '</small></div>';
+}, true);
+</script>
+</body>
+</html>
