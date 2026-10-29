@@ -10,6 +10,10 @@ import gymnasium as gym
 import numpy as np
 
 ENV_ID = "FlappyBird-v0"
+# With background=None the game fills the sky with this colour; the ground starts at 79% of
+# the screen height (flappy-bird-gymnasium 0.4.0).
+BACKGROUND_RGB = (200, 200, 200)
+GROUND_FRACTION = 0.79
 
 
 def shape_reward(reward, terminated):
@@ -25,16 +29,30 @@ def shape_reward(reward, terminated):
     return -0.5 if reward < 0 else 0.1
 
 
-def _make_base(render_mode):
+def _make_base(render_mode=None, background="day"):
     import flappy_bird_gymnasium  # noqa: F401  (registers FlappyBird-v0)
-    return gym.make(ENV_ID, render_mode=render_mode, use_lidar=False)
+    return gym.make(ENV_ID, render_mode=render_mode, use_lidar=False, background=background)
+
+
+def preprocess_frame(frame, size=(84, 84)):
+    """RGB game frame -> (H, W) uint8 mask of bird and pipes.
+
+    The scrolling ground is cropped and the plain sky (background=None) becomes 0, so the
+    network only sees what matters. Resizing with INTER_AREA keeps soft edges.
+    """
+    if frame is None:
+        raise RuntimeError("Environment did not render an RGB frame")
+    crop = frame[:int(frame.shape[0] * GROUND_FRACTION)]
+    sky = cv2.inRange(crop, tuple(c - 10 for c in BACKGROUND_RGB), tuple(c + 10 for c in BACKGROUND_RGB))
+    mask = cv2.bitwise_not(sky)  # 255 wherever the pixel is not sky
+    return cv2.resize(mask, size, interpolation=cv2.INTER_AREA)
 
 
 class FlappyBirdStateEnv(gym.Wrapper):
     """12-d state vector observation with shaped reward."""
 
     def __init__(self, render=False):
-        super().__init__(_make_base("rgb_array" if render else None))
+        super().__init__(_make_base(render_mode="rgb_array" if render else None))
         space = self.env.observation_space
         self.observation_space = gym.spaces.Box(
             space.low.astype(np.float32), space.high.astype(np.float32), dtype=np.float32)
@@ -52,12 +70,12 @@ class FlappyBirdStateEnv(gym.Wrapper):
 
 
 class FlappyBirdPixelEnv(gym.Wrapper):
-    """Grayscale, resized, frame-stacked observations of shape (stack, H, W), uint8."""
+    """Frame-stacked bird/pipe masks of shape (stack, H, W), uint8 (see preprocess_frame)."""
 
     def __init__(self, frame_size=(84, 84), stack_size=4):
         if stack_size <= 0 or len(frame_size) != 2 or min(frame_size) <= 0:
             raise ValueError("frame_size and stack_size must be positive")
-        super().__init__(_make_base("rgb_array"))
+        super().__init__(_make_base(render_mode="rgb_array", background=None))
         self.frame_size, self.stack_size = frame_size, stack_size
         self.observation_space = gym.spaces.Box(
             0, 255, shape=(stack_size, frame_size[1], frame_size[0]), dtype=np.uint8)
@@ -65,10 +83,7 @@ class FlappyBirdPixelEnv(gym.Wrapper):
         self.last_frame = None  # full-colour frame, used for video
 
     def _process(self, frame):
-        if frame is None:
-            raise RuntimeError("Environment did not render an RGB frame")
-        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        return cv2.resize(gray, self.frame_size, interpolation=cv2.INTER_AREA)
+        return preprocess_frame(frame, self.frame_size)
 
     def get_frame(self):
         return self.last_frame

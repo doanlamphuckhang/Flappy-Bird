@@ -1,4 +1,4 @@
-"""Double DQN agent (van Hasselt et al., 2016) with dueling networks."""
+"""Double DQN agent (van Hasselt et al., 2016) with dueling networks and n-step returns."""
 import os
 import random
 from dataclasses import asdict, fields
@@ -8,9 +8,9 @@ import numpy as np
 import torch
 from torch import nn, optim
 
-from .config import NUM_ACTIONS, AgentConfig
+from .config import AgentConfig
 from .models import build_network
-from .replay import ReplayBuffer
+from .replay import NStepCollector, ReplayBuffer
 from .runtime import resolve_device
 
 
@@ -36,6 +36,7 @@ class DQNAgent:
         self.loss_fn = nn.SmoothL1Loss()
         self.memory = ReplayBuffer(self.config.buffer_capacity, self.config.state_shape,
                                    self.config.state_dtype)
+        self.nstep = NStepCollector(self.config.n_step, self.config.gamma)
         self.total_steps = 0  # gradient updates
         self.env_steps = 0    # environment steps taken after warmup
 
@@ -44,10 +45,15 @@ class DQNAgent:
         c = self.config
         return linear_schedule(c.epsilon_start, c.epsilon_min, c.exploration_steps, self.env_steps)
 
-    def observe(self, state, action, reward, next_state, terminated):
-        """Store a transition and advance the exploration schedule."""
-        self.memory.push(state, action, reward, next_state, terminated)
-        self.env_steps += 1
+    def observe(self, state, action, reward, next_state, terminated, truncated=False, count=True):
+        """Feed one environment step to the n-step collector and store finished transitions.
+
+        `count=False` (warmup) leaves the exploration schedule untouched.
+        """
+        for transition in self.nstep.push(state, action, reward, next_state, terminated, truncated):
+            self.memory.push(*transition)
+        if count:
+            self.env_steps += 1
 
     @torch.no_grad()
     def q_values(self, state):
@@ -57,29 +63,35 @@ class DQNAgent:
     def select_action(self, state, evaluate=False):
         """Epsilon-greedy action; `evaluate=True` is purely greedy."""
         if not evaluate and random.random() < self.epsilon:
-            return random.randrange(NUM_ACTIONS)
+            return self.random_action()
         return int(self.q_values(state).argmax())
 
-    def _td_target(self, rewards, next_states, dones):
-        # Double DQN: the policy net picks the action, the target net evaluates it.
+    def random_action(self):
+        """Exploration action, biased towards "do nothing" (see AgentConfig.explore_flap_prob)."""
+        return int(random.random() < self.config.explore_flap_prob)
+
+    def _td_target(self, rewards, next_states, dones, nsteps=None):
+        """r + gamma^k * Q_target(s', argmax_a Q_policy(s', a)), zeroed past termination."""
         best = self.policy_net(next_states).argmax(dim=-1, keepdim=True)
-        next_q = self.target_net(next_states).gather(1, best)
-        return rewards + (1.0 - dones.float()) * self.config.gamma * next_q
+        next_q = self.target_net(next_states).gather(1, best).float()
+        discount = self.config.gamma if nsteps is None else self.config.gamma ** nsteps.float()
+        return rewards + (1.0 - dones.float()) * discount * next_q
 
     def update(self):
         """One gradient step on a replay batch; returns the loss or None while the buffer fills."""
         cfg = self.config
         if len(self.memory) < cfg.batch_size:
             return None
-        states, actions, rewards, next_states, dones = (
-            torch.from_numpy(a).to(self.device) for a in self.memory.sample(cfg.batch_size))
-        actions, rewards, dones = actions.unsqueeze(1), rewards.unsqueeze(1), dones.unsqueeze(1)
+        states, actions, rewards, next_states, dones, nsteps = (
+            torch.from_numpy(a).to(self.device, non_blocking=True)
+            for a in self.memory.sample(cfg.batch_size))
+        actions, rewards, dones, nsteps = (t.unsqueeze(1) for t in (actions, rewards, dones, nsteps))
 
         with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=self.use_amp):
             q = self.policy_net(states).gather(1, actions)
             with torch.no_grad():
-                target = self._td_target(rewards, next_states, dones)
-            loss = self.loss_fn(q, target)
+                target = self._td_target(rewards, next_states, dones, nsteps)
+        loss = self.loss_fn(q.float(), target.float())  # loss in fp32 for stability
 
         self.optimizer.zero_grad(set_to_none=True)
         self.scaler.scale(loss).backward()

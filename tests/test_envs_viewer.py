@@ -24,12 +24,24 @@ class FakeGame(gym.Env):
         return np.zeros(12, np.float64), 1.0 if self.t == 2 else 0.0, self.t == 3, False, {"score": 0}
 
     def render(self):
-        return np.full((512, 288, 3), 40 * self.t, np.uint8)
+        """Plain sky, a 40x40 "bird" that moves 30 px down per step, ground at the bottom."""
+        frame = np.full((512, 288, 3), envs.BACKGROUND_RGB, np.uint8)
+        y = 50 + 30 * self.t
+        frame[y:y + 40, 60:100] = (250, 180, 40)
+        frame[405:] = (220, 210, 150)  # ground (cropped away)
+        return frame
 
 
 @pytest.fixture(autouse=True)
 def fake_game(monkeypatch):
-    monkeypatch.setattr(envs, "_make_base", lambda render_mode: FakeGame())
+    calls = []
+
+    def make_base(**kwargs):
+        calls.append(kwargs)
+        return FakeGame()
+
+    monkeypatch.setattr(envs, "_make_base", make_base)
+    return calls
 
 
 def test_reward_shaping():
@@ -39,8 +51,19 @@ def test_reward_shaping():
     assert envs.shape_reward(-0.5, False) == -0.5  # above the screen keeps its penalty
 
 
-def test_pixel_env_shape_dtype_and_frame_stack():
+def test_preprocess_drops_sky_and_ground():
+    frame = FakeGame().render()
+    mask = envs.preprocess_frame(frame)
+    assert mask.shape == (84, 84) and mask.dtype == np.uint8
+    assert mask[-1].max() == 0 and mask[0].max() == 0  # ground row and empty sky are black
+    assert mask.max() == 255  # the bird is white
+    with pytest.raises(RuntimeError):
+        envs.preprocess_frame(None)
+
+
+def test_pixel_env_shape_dtype_and_frame_stack(fake_game):
     env = envs.make_env("pixel")
+    assert fake_game[-1] == {"render_mode": "rgb_array", "background": None}
     obs, _ = env.reset()
     assert obs.shape == (4, 84, 84) and obs.dtype == np.uint8 and env.observation_space.contains(obs)
     assert (obs[0] == obs[-1]).all()  # the stack starts as copies of the first frame
@@ -96,7 +119,7 @@ class FakeRecordedGame(FakeGame):
 
 
 def test_record_replay_and_weights_export(make_agent, monkeypatch, tmp_path):
-    monkeypatch.setattr(envs, "_make_base", lambda render_mode: FakeRecordedGame())
+    monkeypatch.setattr(envs, "_make_base", lambda **kw: FakeRecordedGame())
     agent = make_agent()
     replay = export.record_replay(agent, num_episodes=2, max_steps=10, out_path=tmp_path / "r.json")
     assert json.loads((tmp_path / "r.json").read_text(encoding="utf-8")) == replay

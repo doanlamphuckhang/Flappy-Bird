@@ -9,3 +9,4 @@ outputs/
 .ipynb_checkpoints/
 .ruff_cache/
 runs/
+flappy_bird_output/

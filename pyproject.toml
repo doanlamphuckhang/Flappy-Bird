@@ -1,6 +1,6 @@
 [project]
 name = "flappy-rl"
-version = "1.0.1"
+version = "1.1.0"
 description = "Double Dueling DQN for Flappy Bird (pixel and state observations)"
 requires-python = ">=3.10"
 dependencies = [
