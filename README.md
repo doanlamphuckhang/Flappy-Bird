@@ -18,6 +18,32 @@ Tham khảo: [uvipen/Flappy-bird-deep-Q-learning-pytorch](https://github.com/uvi
 (2 triệu bước, cắt đất, ảnh nhị phân), [johnnycode8/dqn_pytorch](https://github.com/johnnycode8/dqn_pytorch)
 (Double + Dueling DQN trên `flappy-bird-gymnasium`), bài viết DDQN của Lamboqin (khám phá không đều).
 
+## Kết quả: `pixel`, 2 triệu bước
+
+Thư mục [flappy_bird_output/pixel_20261029_074054](flappy_bird_output/pixel_20261029_074054)
+(train trên GPU Colab, 1 giờ 25 phút, khoảng 390 bước/giây).
+
+| Chỉ số | Giá trị |
+|---|---|
+| Holdout greedy, 10 episode, seed khác, tối đa 10.000 bước (khoảng 262 ống) | **193,7 ống** |
+| Eval greedy tốt nhất (5 episode, tối đa 5.000 bước, trần 132 ống) | 132, lần đầu ở bước 600.000 (`best.pt`) |
+| Điểm cao nhất lúc train | 265 ống |
+| Điểm trung bình lúc train (epsilon 0,01) sau 250.000 bước | khoảng 30 ống |
+
+![Đồ thị huấn luyện](flappy_bird_output/pixel_20261029_074054/training_results.png)
+
+- Agent bắt đầu học khi epsilon về 0,01 (bước 250.000): điểm trung bình episode tăng từ 1,0
+  (250 nghìn bước đầu) lên 28,8 (bước 250 nghìn đến 500 nghìn), rồi giữ quanh 30 đến 35.
+- Cả 3 episode trong video (tối đa 1.500 bước) và 3 episode replay 3D (tối đa 3.000 bước) đều
+  chạm giới hạn bước mà chim chưa chết (39 và 79 ống).
+- Điểm lúc train thấp hơn điểm greedy vì 1% hành động ngẫu nhiên đủ làm chim chết ở khe hẹp.
+- Điểm eval dao động mạnh giữa các lần (22 đến 132): chính sách DQN dao động, cộng thêm chỉ 5
+  episode mỗi lần eval. Giới hạn bước làm 132 và khoảng 262 là trần đo, không phải giới hạn của agent.
+- Mỗi ống tốn khoảng 38 bước (khung hình).
+
+Trong repo có `best.pt` (Git LFS, 52 MB), log, đồ thị, video, replay 3D và notebook đã chạy
+(`flappy_bird_rl_executed.ipynb`). `last.pt` (bước 2.000.000) chỉ lưu trên Drive.
+
 Phần thưởng sau shaping: chết -1, qua ống +1, bay vượt mép trên màn hình -0,5, còn sống +0,1.
 
 ## Cấu trúc

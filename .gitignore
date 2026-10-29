@@ -9,4 +9,8 @@ outputs/
 .ipynb_checkpoints/
 .ruff_cache/
 runs/
-flappy_bird_output/
+# Runs stay local, except the published pixel result (best.pt via Git LFS; last.pt stays on Drive).
+flappy_bird_output/*
+!flappy_bird_output/pixel_20261029_074054/
+!flappy_bird_output/pixel_20261029_074054/best.pt
+!flappy_bird_output/pixel_20261029_074054/gameplay.mp4
